@@ -749,42 +749,48 @@ function App() {
                     <div className="text-sm text-green-600 font-medium">waiting devotees</div>
                   </div>
                 </div>
-
-
-                <div className="bg-indigo-50 border border-indigo-300 p-6 rounded-2xl shadow-sm">
-                  <h3 className="font-bold mb-4 text-indigo-900 text-lg flex items-center gap-2">
-                    <Clock className="w-5 h-5" /> Phase 3: M/M/k Queuing Estimation
+                <div className="bg-indigo-50 border border-indigo-200 p-6 rounded-2xl shadow-sm relative overflow-hidden">
+                  <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500 rounded-bl-full opacity-5 pointer-events-none"></div>
+                  <h3 className="font-bold mb-5 text-indigo-900 text-xl flex items-center gap-3">
+                    <Clock className="w-6 h-6 text-indigo-600" /> Live Queue Predictions
                   </h3>
-                  <div className="grid grid-cols-3 gap-4 mb-4">
-                    <div className="bg-white p-3 rounded-xl border border-indigo-100 text-center">
-                      <div className="text-xs text-indigo-500 font-bold uppercase">Arrival Rate (λ)</div>
-                      <div className="text-xl font-black text-indigo-900">{queueStatus.mmk_metrics.arrival_rate_lambda} <span className="text-xs font-normal">/min</span></div>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                    <div className="bg-white p-4 rounded-xl border border-indigo-100 shadow-sm transition-all hover:shadow-md hover:border-indigo-200">
+                      <div className="text-xs text-indigo-500 font-bold uppercase tracking-wider mb-1">People Arriving</div>
+                      <div className="text-2xl font-black text-gray-800">{queueStatus.mmk_metrics.arrival_rate_lambda} <span className="text-sm font-bold text-gray-400">/min</span></div>
                     </div>
-                    <div className="bg-white p-3 rounded-xl border border-indigo-100 text-center">
-                      <div className="text-xs text-indigo-500 font-bold uppercase">Service Rate (µ)</div>
-                      <div className="text-xl font-black text-indigo-900">{queueStatus.mmk_metrics.service_rate_mu} <span className="text-xs font-normal">/min</span></div>
+                    <div className="bg-white p-4 rounded-xl border border-indigo-100 shadow-sm transition-all hover:shadow-md hover:border-indigo-200">
+                      <div className="text-xs text-indigo-500 font-bold uppercase tracking-wider mb-1">Darshan Rate</div>
+                      <div className="text-2xl font-black text-gray-800">{queueStatus.mmk_metrics.service_rate_mu} <span className="text-sm font-bold text-gray-400">/min</span></div>
                     </div>
-                    <div className="bg-white p-3 rounded-xl border border-indigo-100 text-center">
-                      <div className="text-xs text-indigo-500 font-bold uppercase">Active Counters (k)</div>
-                      <div className="text-xl font-black text-indigo-900">{queueStatus.mmk_metrics.counters_k}</div>
+                    <div className="bg-white p-4 rounded-xl border border-indigo-100 shadow-sm transition-all hover:shadow-md hover:border-indigo-200">
+                      <div className="text-xs text-indigo-500 font-bold uppercase tracking-wider mb-1">Open Gates</div>
+                      <div className="text-2xl font-black text-gray-800">{queueStatus.mmk_metrics.counters_k}</div>
                     </div>
                   </div>
                   
-                  <div className="grid grid-cols-2 gap-4 mb-4">
-                    <div className="bg-indigo-100 p-4 rounded-xl border border-indigo-200 text-center">
-                      <div className="text-xs text-indigo-600 font-bold uppercase">Expected Queue Length (Lq)</div>
-                      <div className="text-2xl font-black text-indigo-900">{queueStatus.mmk_metrics.expected_queue_length} <span className="text-sm font-normal">people</span></div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
+                    <div className="bg-indigo-100/50 p-5 rounded-xl border border-indigo-100 flex justify-between items-center">
+                      <div>
+                        <div className="text-xs text-indigo-700 font-bold uppercase tracking-wider mb-1">Est. Queue Size</div>
+                        <div className="text-sm text-indigo-500 font-medium">People waiting right now</div>
+                      </div>
+                      <div className="text-3xl font-black text-indigo-900">{queueStatus.mmk_metrics.expected_queue_length}</div>
                     </div>
-                    <div className="bg-indigo-100 p-4 rounded-xl border border-indigo-200 text-center">
-                      <div className="text-xs text-indigo-600 font-bold uppercase">System Utilization (ρ)</div>
-                      <div className="text-2xl font-black text-indigo-900">{queueStatus.mmk_metrics.utilization_pct}%</div>
+                    <div className="bg-indigo-100/50 p-5 rounded-xl border border-indigo-100 flex justify-between items-center">
+                      <div>
+                        <div className="text-xs text-indigo-700 font-bold uppercase tracking-wider mb-1">System Load</div>
+                        <div className="text-sm text-indigo-500 font-medium">Current capacity used</div>
+                      </div>
+                      <div className="text-3xl font-black text-indigo-900">{queueStatus.mmk_metrics.utilization_pct}%</div>
                     </div>
                   </div>
                   
-                  <div className="bg-indigo-600 text-white p-4 rounded-xl flex justify-between items-center shadow-inner">
-                    <div className="font-bold">Expected Waiting Time (Wq):</div>
-                    <div className="text-3xl font-black">
-                      {queueStatus.mmk_metrics.expected_wait_mins} {typeof queueStatus.mmk_metrics.expected_wait_mins === 'number' ? 'mins' : ''}
+                  <div className="bg-gradient-to-r from-indigo-600 to-blue-600 text-white p-6 rounded-xl flex flex-col md:flex-row justify-between items-center shadow-md">
+                    <div className="text-lg font-bold mb-2 md:mb-0">Estimated Wait Time</div>
+                    <div className="text-4xl font-black tracking-tight">
+                      {queueStatus.mmk_metrics.expected_wait_mins} {typeof queueStatus.mmk_metrics.expected_wait_mins === 'number' ? <span className="text-xl font-medium opacity-80 ml-1">mins</span> : ''}
                     </div>
                   </div>
                 </div>
