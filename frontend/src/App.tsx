@@ -24,6 +24,7 @@ function App() {
   const [activeTab, setActiveTab] = useState(localStorage.getItem('activeTab') || 'home'); // 'home' | 'devotee' | 'staff' | 'admin'
   const [isAdmin, setIsAdmin] = useState(localStorage.getItem('adminToken') === 'true');
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
+  const [registerRole, setRegisterRole] = useState<'devotee' | 'admin'>('devotee');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [staffSelectedTemple, setStaffSelectedTemple] = useState<number | null>(null);
 
@@ -410,11 +411,26 @@ function App() {
                     </div>
                   ) : (
                     <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-right-4 duration-300">
+                      
+                      <div className="flex bg-orange-100/50 p-1 rounded-xl mb-2">
+                        <button onClick={() => setRegisterRole('devotee')} className={`flex-1 py-2 text-sm font-bold rounded-lg transition ${registerRole === 'devotee' ? 'bg-white shadow-sm text-orange-600' : 'text-gray-500 hover:text-gray-700'}`}>Devotee</button>
+                        <button onClick={() => setRegisterRole('admin')} className={`flex-1 py-2 text-sm font-bold rounded-lg transition ${registerRole === 'admin' ? 'bg-white shadow-sm text-orange-600' : 'text-gray-500 hover:text-gray-700'}`}>Temple Admin</button>
+                      </div>
+
                       <input id="regName" type="text" placeholder="Full Name" className="p-4 border border-orange-200/50 rounded-xl bg-white shadow-sm focus:ring-2 focus:ring-orange-500 outline-none transition" />
                       <input id="regEmail" type="email" placeholder="Email Address" className="p-4 border border-orange-200/50 rounded-xl bg-white shadow-sm focus:ring-2 focus:ring-orange-500 outline-none transition" />
                       <input id="regPassword" type="password" placeholder="Password" className="p-4 border border-orange-200/50 rounded-xl bg-white shadow-sm focus:ring-2 focus:ring-orange-500 outline-none transition" />
                       <input id="regPasswordConfirm" type="password" placeholder="Re-type Password" className="p-4 border border-orange-200/50 rounded-xl bg-white shadow-sm focus:ring-2 focus:ring-orange-500 outline-none transition" />
                       
+                      {registerRole === 'admin' && (
+                        <div className="flex flex-col gap-4 animate-in slide-in-from-top-2 duration-300 bg-orange-50 p-4 rounded-xl border border-orange-200/50 mt-2">
+                          <p className="text-xs font-bold text-orange-800 uppercase tracking-wider mb-1">Temple Details</p>
+                          <input id="regAdminCity" type="text" placeholder="City (e.g. Mumbai)" className="p-4 border border-orange-200/50 rounded-xl bg-white shadow-sm focus:ring-2 focus:ring-orange-500 outline-none transition" />
+                          <input id="regAdminTempleName" type="text" placeholder="Temple Name" className="p-4 border border-orange-200/50 rounded-xl bg-white shadow-sm focus:ring-2 focus:ring-orange-500 outline-none transition" />
+                          <input id="regAdminTempleCode" type="text" placeholder="Temple Code (from Main Admin)" className="p-4 border border-orange-200/50 rounded-xl bg-white shadow-sm focus:ring-2 focus:ring-orange-500 outline-none transition" />
+                        </div>
+                      )}
+
                       <button 
                         onClick={async () => {
                           const name = (document.getElementById('regName') as HTMLInputElement).value;
@@ -422,6 +438,14 @@ function App() {
                           const pwd = (document.getElementById('regPassword') as HTMLInputElement).value;
                           const pwdConfirm = (document.getElementById('regPasswordConfirm') as HTMLInputElement).value;
                           
+                          let adminCity = '', adminTempleName = '', adminTempleCode = '';
+                          if (registerRole === 'admin') {
+                            adminCity = (document.getElementById('regAdminCity') as HTMLInputElement).value;
+                            adminTempleName = (document.getElementById('regAdminTempleName') as HTMLInputElement).value;
+                            adminTempleCode = (document.getElementById('regAdminTempleCode') as HTMLInputElement).value;
+                            if (!adminCity || !adminTempleName || !adminTempleCode) return alert("Please fill all Temple Details.");
+                          }
+
                           if (!name || !email || !pwd || !pwdConfirm) return alert("Please fill in all fields.");
                           if (pwd !== pwdConfirm) return alert("Passwords do not match!");
                           
@@ -432,9 +456,29 @@ function App() {
                               options: { data: { name } }
                             });
                             if (error) throw error;
-                            alert("Registered successfully! Please check your email for a confirmation link (if enabled), then login.");
-                            setAuthMode('login');
-                          } catch (e: any) { alert("Registration Failed: " + (e.message || "Error")); }
+                            
+                            if (registerRole === 'admin') {
+                              const { data: loginData, error: loginErr } = await supabase.auth.signInWithPassword({ email, password: pwd });
+                              if (loginErr || !loginData.session) throw new Error("Registration succeeded, but auto-login failed. Please try logging in manually.");
+                              
+                              const token = loginData.session.access_token;
+                              await axios.post(`${API_URL}/admin/register-temple`, {
+                                city: adminCity,
+                                temple_name: adminTempleName,
+                                temple_code: adminTempleCode,
+                                name
+                              }, {
+                                headers: { Authorization: `Bearer ${token}` }
+                              });
+                              
+                              localStorage.setItem('token', token);
+                              alert("Temple Admin Registered Successfully!");
+                              window.location.reload();
+                            } else {
+                              alert("Registered successfully! Please login.");
+                              setAuthMode('login');
+                            }
+                          } catch (e: any) { alert("Registration Failed: " + (e.response?.data?.detail || e.message || "Error")); }
                         }}
                         className="w-full mt-2 bg-gray-900 hover:bg-black text-white font-bold py-4 rounded-xl shadow-lg transition-all active:scale-[0.98]"
                       >Create Account</button>
