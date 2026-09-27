@@ -25,6 +25,7 @@ function App() {
   const [isAdmin, setIsAdmin] = useState(localStorage.getItem('adminToken') === 'true');
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [staffSelectedTemple, setStaffSelectedTemple] = useState<number | null>(null);
   
   useEffect(() => {
     localStorage.setItem('activeTab', activeTab);
@@ -510,19 +511,46 @@ function App() {
 
         {activeTab === 'staff' && (
           <section className="bg-white p-8 rounded-xl shadow-sm border border-gray-100 flex flex-col gap-8 max-w-4xl mx-auto">
-            <div className="flex justify-between items-center border-b pb-4">
-              <h2 className="text-2xl font-bold flex items-center gap-3">
-                <Clock className="w-7 h-7 text-blue-600" />
-                Live Queue & Crowd Control
-              </h2>
-              <div className="flex items-center gap-2">
-                <span className="relative flex h-3 w-3">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
-                </span>
-                <span className="text-sm font-medium text-gray-500 uppercase tracking-wider">Live</span>
+            {!staffSelectedTemple ? (
+              <div className="flex flex-col gap-4 text-center items-center py-12">
+                <ShieldCheck className="w-16 h-16 text-blue-500 mb-2" />
+                <h2 className="text-2xl font-black text-gray-900">Select Temple to Monitor</h2>
+                <p className="text-gray-500 max-w-md mb-4">Choose a temple below to view its live crowd status, queue metrics, and environment sensors.</p>
+                <select
+                  className="w-full max-w-md p-4 border-2 border-gray-200 rounded-xl bg-gray-50 text-gray-800 font-bold text-lg focus:border-blue-500 outline-none transition-colors cursor-pointer"
+                  onChange={(e) => {
+                    const val = Number(e.target.value);
+                    if (val) {
+                      setStaffSelectedTemple(val);
+                      handleAdminTempleChange(val);
+                    }
+                  }}
+                  defaultValue=""
+                >
+                  <option value="" disabled>-- Choose Temple --</option>
+                  {temples.map((t) => (
+                    <option key={t.id} value={t.id}>{t.name}, {t.city}</option>
+                  ))}
+                </select>
               </div>
-            </div>
+            ) : (
+              <>
+                <div className="flex justify-between items-center border-b pb-4">
+                  <h2 className="text-2xl font-bold flex items-center gap-3">
+                    <Clock className="w-7 h-7 text-blue-600" />
+                    Live Queue & Crowd Control
+                  </h2>
+                  <div className="flex items-center gap-4">
+                    <button onClick={() => setStaffSelectedTemple(null)} className="text-sm font-bold text-gray-500 hover:text-blue-600 underline">Change Temple</button>
+                    <div className="flex items-center gap-2">
+                      <span className="relative flex h-3 w-3">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
+                      </span>
+                      <span className="text-sm font-medium text-gray-500 uppercase tracking-wider">Live</span>
+                    </div>
+                  </div>
+                </div>
 
             {/* NEW: IoT Environment Sensors Mock */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 bg-gray-50 border rounded-xl p-4 shadow-sm">
@@ -641,7 +669,8 @@ function App() {
                 Connecting to live systems...
               </div>
             )}
-
+            </>
+            )}
           </section>
         )}
         {activeTab === 'admin' && (
