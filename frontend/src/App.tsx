@@ -83,7 +83,8 @@ function App() {
     const interval = setInterval(fetchQueueStatus, 5000);
     
     // Phase 4: WebSocket for real-time CV alerts
-    const ws = new WebSocket(`ws://127.0.0.1:8000/ws/cv-alerts`);
+    const WS_URL = import.meta.env.PROD ? `wss://${window.location.host}/api/ws/cv-alerts` : `ws://127.0.0.1:8000/ws/cv-alerts`;
+    const ws = new WebSocket(WS_URL);
     ws.onmessage = (event) => {
       const cvAlert = JSON.parse(event.data);
       setQueueStatus((prev: any) => {
