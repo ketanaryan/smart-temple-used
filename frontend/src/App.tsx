@@ -750,16 +750,6 @@ function App() {
                   </div>
                 </div>
 
-                <div className="bg-yellow-50 border border-yellow-300 p-6 rounded-2xl flex gap-4 shadow-sm items-start">
-                  <AlertTriangle className="w-8 h-8 text-yellow-600 flex-shrink-0 mt-1" />
-                  <div>
-                    <div className="font-bold text-yellow-900 text-xl mb-1">Dynamic Queue Balancer</div>
-                    <div className="text-yellow-800 leading-relaxed">
-                      The system detects queue imbalance. Tendency favors: <strong className="bg-yellow-200 px-2 py-1 rounded">{queueStatus.next_category || 'BALANCED'}</strong>
-                      <br/>The automated gate token will be pulled from this queue next to restore fairness.
-                    </div>
-                  </div>
-                </div>
 
                 <div className="bg-indigo-50 border border-indigo-300 p-6 rounded-2xl shadow-sm">
                   <h3 className="font-bold mb-4 text-indigo-900 text-lg flex items-center gap-2">
@@ -799,21 +789,7 @@ function App() {
                   </div>
                 </div>
                 
-                <div className="pt-2">
-                  <h3 className="font-bold mb-4 text-gray-800 text-lg">Computer Vision Alerts (YOLOv8 + ByteTrack)</h3>
-                  <div className={`p-6 rounded-2xl border-2 flex items-center justify-between shadow-sm transition-colors ${queueStatus.cv_alerts.status === 'HIGH CONGESTION' ? 'bg-red-50 border-red-300' : 'bg-green-50 border-green-300'}`}>
-                    <div>
-                      <div className="text-gray-500 font-semibold uppercase text-xs mb-1">Camera Feed Estimate</div>
-                      <div className={`text-3xl font-black ${queueStatus.cv_alerts.status === 'HIGH CONGESTION' ? 'text-red-900' : 'text-green-900'}`}>
-                        {queueStatus.cv_alerts.detected_crowd} <span className="text-lg font-medium opacity-60">people detected</span>
-                      </div>
-                      <div className="text-sm opacity-80 mt-2 font-medium">Expected threshold from bookings: {queueStatus.cv_alerts.expected_devotees}</div>
-                    </div>
-                    <div className={`px-6 py-3 rounded-full font-black tracking-widest text-sm shadow-sm ${queueStatus.cv_alerts.status === 'HIGH CONGESTION' ? 'bg-red-600 text-white animate-pulse' : 'bg-green-600 text-white'}`}>
-                      {queueStatus.cv_alerts.status}
-                    </div>
-                  </div>
-                </div>
+
               </>
             ) : (
               <div className="text-gray-500 text-center py-20 flex flex-col items-center">
