@@ -360,3 +360,10 @@ def get_ticket(token_number: str, db: Session = Depends(get_db)):
         'booking_time': booking.booking_time,
         'user_name': user.name if user else 'Walk-in Devotee'
     }
+
+@app.get('/admin/codes', response_model=List[schemas.TempleCodeResponse])
+def get_temple_codes(db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    if current_user.email != 'mainadmin@smarttemple.com':
+        raise HTTPException(status_code=403, detail='Only Main Admin can view codes')
+    codes = db.query(models.TempleCode).order_by(models.TempleCode.id.desc()).all()
+    return codes

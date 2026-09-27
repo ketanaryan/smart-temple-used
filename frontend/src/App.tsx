@@ -91,6 +91,21 @@ function App() {
     }
   };
 
+  const [adminCodes, setAdminCodes] = useState<any[]>([]);
+
+  const fetchAdminCodes = async () => {
+    const token = localStorage.getItem('token');
+    if (!token) return;
+    try {
+      const res = await axios.get(`${API_URL}/admin/codes`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setAdminCodes(res.data);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   const fetchUserDashboard = async () => {
     const token = localStorage.getItem('token');
     if (!token) return;
@@ -100,6 +115,9 @@ function App() {
       });
       setUserDashboard(res.data);
       setIsAdmin(res.data.user?.is_admin || false);
+      if (res.data.user?.email === 'mainadmin@smarttemple.com') {
+        fetchAdminCodes();
+      }
     } catch (e) {
       console.error("Session expired or invalid", e);
       localStorage.removeItem('token');
@@ -765,15 +783,36 @@ function App() {
               <div className="bg-blue-50 border border-blue-100 p-6 rounded-2xl flex flex-col items-center justify-center text-center shadow-sm mb-6">
                 <h4 className="font-bold text-blue-800 mb-2">Main Admin Controls</h4>
                 <p className="text-blue-600 text-sm mb-4">Generate unique Temple Codes to distribute to Temple Admins.</p>
-                <button onClick={async () => {
-                  const code = prompt("Enter a new unique temple code:");
-                  if (code) {
+                
+                <div className="flex flex-col md:flex-row gap-2 w-full max-w-md mb-6">
+                  <input id="newTempleCode" placeholder="Enter code (e.g. TPL-MUM-01)" className="p-3 border border-blue-200 rounded-lg flex-1 outline-none focus:border-blue-500" />
+                  <button onClick={async () => {
+                    const codeInput = document.getElementById('newTempleCode') as HTMLInputElement;
+                    const code = codeInput.value;
+                    if (!code) return alert("Enter a code first!");
                     try {
                       await axios.post(`${API_URL}/admin/generate-code`, {code}, { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }});
-                      alert("Code generated successfully!");
+                      codeInput.value = '';
+                      fetchAdminCodes();
                     } catch(e: any) { alert("Failed: " + (e.response?.data?.detail || e.message)); }
-                  }
-                }} className="bg-blue-600 text-white py-2 px-6 rounded-lg font-bold hover:bg-blue-700">Generate New Temple Code</button>
+                  }} className="bg-blue-600 text-white py-3 px-6 rounded-lg font-bold hover:bg-blue-700 shadow-sm">Generate</button>
+                </div>
+
+                {adminCodes.length > 0 && (
+                  <div className="w-full max-w-md bg-white rounded-xl border border-blue-100 p-4 text-left shadow-sm">
+                    <h5 className="font-bold text-gray-700 mb-3 text-sm">Generated Codes History</h5>
+                    <div className="flex flex-col gap-2 max-h-48 overflow-y-auto pr-2">
+                      {adminCodes.map((c: any, i: number) => (
+                        <div key={i} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg border border-gray-100">
+                          <span className="font-mono font-bold text-sm text-gray-800">{c.code}</span>
+                          <span className={`text-xs font-bold px-2 py-1 rounded ${c.is_used ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
+                            {c.is_used ? 'USED' : 'AVAILABLE'}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
             

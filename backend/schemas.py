@@ -79,3 +79,10 @@ class TempleAdminRegister(BaseModel):
 
 class TempleCodeCreate(BaseModel):
     code: str
+
+class TempleCodeResponse(BaseModel):
+    code: str
+    is_used: bool
+
+    class Config:
+        from_attributes = True
