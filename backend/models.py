@@ -34,6 +34,9 @@ class TempleCode(Base):
     code = Column(String, unique=True, index=True)
     is_used = Column(Boolean, default=False)
     created_by = Column(Integer, ForeignKey("users.id"))
+    temple_id = Column(Integer, ForeignKey("temples.id"), nullable=True)
+
+    temple = relationship("Temple")
 
 
 class TimeSlot(Base):

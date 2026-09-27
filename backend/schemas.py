@@ -78,11 +78,13 @@ class TempleAdminRegister(BaseModel):
     temple_code: str
 
 class TempleCodeCreate(BaseModel):
-    code: str
+    temple_id: int
 
 class TempleCodeResponse(BaseModel):
     code: str
     is_used: bool
+    temple_id: Optional[int] = None
+    temple_name: Optional[str] = None
 
     class Config:
         from_attributes = True

@@ -307,39 +307,49 @@ except Exception as e:
         return {"error": "Failed to initialize server", "traceback": error_msg}
 
 
-@app.post('/admin/generate-code', response_model=schemas.TempleCodeCreate)
+@app.post('/admin/generate-code')
 def generate_temple_code(code_data: schemas.TempleCodeCreate, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
-    # Only allow main admin
     if current_user.email != 'mainadmin@smarttemple.com':
         raise HTTPException(status_code=403, detail='Only Main Admin can generate codes')
-    db_code = models.TempleCode(code=code_data.code, created_by=current_user.id)
+    import string, random
+    temple = db.query(models.Temple).filter(models.Temple.id == code_data.temple_id).first()
+    if not temple:
+        raise HTTPException(status_code=404, detail='Temple not found')
+    prefix = (temple.city[:3] if temple.city else 'TPL').upper()
+    random_str = ''.join(random.choices(string.ascii_uppercase + string.digits, k=4))
+    code_str = f"{prefix}-{random_str}"
+    db_code = models.TempleCode(code=code_str, created_by=current_user.id, temple_id=temple.id)
     db.add(db_code)
     try:
         db.commit()
     except:
         db.rollback()
         raise HTTPException(status_code=400, detail='Code already exists')
-    return code_data
+    return {"code": code_str, "temple_id": temple.id}
+
 
 @app.post('/admin/register-temple')
 def register_temple_admin(data: schemas.TempleAdminRegister, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
-    # Verify code
     code = db.query(models.TempleCode).filter(models.TempleCode.code == data.temple_code, models.TempleCode.is_used == False).first()
     if not code:
         raise HTTPException(status_code=400, detail='Invalid or already used Temple Code')
     
-    # Update User
-    current_user.is_admin = True
-    current_user.name = data.name
-    
-    # Create Temple
-    new_temple = models.Temple(name=data.temple_name, city=data.city, admin_id=current_user.id)
-    db.add(new_temple)
-    
-    # Mark code as used
     code.is_used = True
+    
+    if code.temple_id:
+        temple = db.query(models.Temple).filter(models.Temple.id == code.temple_id).first()
+        if temple:
+            temple.admin_id = current_user.id
+            if data.temple_name: temple.name = data.temple_name
+            if data.city: temple.city = data.city
+    else:
+        new_temple = models.Temple(name=data.temple_name, city=data.city, admin_id=current_user.id)
+        db.add(new_temple)
+        
+    current_user.is_admin = True
     db.commit()
     return {'message': 'Temple Admin registered successfully'}
+
 
 
 @app.get('/users/me', response_model=schemas.User)
@@ -372,4 +382,13 @@ def get_temple_codes(db: Session = Depends(get_db), current_user: models.User = 
     if current_user.email != 'mainadmin@smarttemple.com':
         raise HTTPException(status_code=403, detail='Only Main Admin can view codes')
     codes = db.query(models.TempleCode).order_by(models.TempleCode.id.desc()).all()
-    return codes
+    results = []
+    for c in codes:
+        t = db.query(models.Temple).filter(models.Temple.id == c.temple_id).first() if c.temple_id else None
+        results.append({
+            "code": c.code,
+            "is_used": c.is_used,
+            "temple_id": c.temple_id,
+            "temple_name": t.name if t else None
+        })
+    return results

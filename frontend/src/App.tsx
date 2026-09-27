@@ -822,14 +822,19 @@ function App() {
                 <p className="text-blue-600 text-sm mb-4">Generate unique Temple Codes to distribute to Temple Admins.</p>
                 
                 <div className="flex flex-col md:flex-row gap-2 w-full max-w-md mb-6">
-                  <input id="newTempleCode" placeholder="Enter code (e.g. TPL-MUM-01)" className="p-3 border border-blue-200 rounded-lg flex-1 outline-none focus:border-blue-500" />
+                  <select id="newTempleCode" className="p-3 border border-blue-200 rounded-lg flex-1 outline-none focus:border-blue-500 bg-white" defaultValue="">
+                    <option value="" disabled>-- Select Temple to Assign --</option>
+                    {temples.map((t) => (
+                      <option key={t.id} value={t.id}>{t.name}, {t.city}</option>
+                    ))}
+                  </select>
                   <button onClick={async () => {
-                    const codeInput = document.getElementById('newTempleCode') as HTMLInputElement;
-                    const code = codeInput.value;
-                    if (!code) return alert("Enter a code first!");
+                    const selectEl = document.getElementById('newTempleCode') as HTMLSelectElement;
+                    const templeId = selectEl.value;
+                    if (!templeId) return alert("Select a temple first!");
                     try {
-                      await axios.post(`${API_URL}/admin/generate-code`, {code}, { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }});
-                      codeInput.value = '';
+                      await axios.post(`${API_URL}/admin/generate-code`, {code: 'AUTO', temple_id: Number(templeId)}, { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }});
+                      selectEl.value = '';
                       fetchAdminCodes();
                     } catch(e: any) { alert("Failed: " + (e.response?.data?.detail || e.message)); }
                   }} className="bg-blue-600 text-white py-3 px-6 rounded-lg font-bold hover:bg-blue-700 shadow-sm">Generate</button>
@@ -841,7 +846,10 @@ function App() {
                     <div className="flex flex-col gap-2 max-h-48 overflow-y-auto pr-2">
                       {adminCodes.map((c: any, i: number) => (
                         <div key={i} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg border border-gray-100">
-                          <span className="font-mono font-bold text-sm text-gray-800">{c.code}</span>
+                          <div>
+                            <div className="font-mono font-bold text-sm text-gray-800">{c.code}</div>
+                            {c.temple_name && <div className="text-xs text-gray-500 font-medium mt-1">{c.temple_name}</div>}
+                          </div>
                           <span className={`text-xs font-bold px-2 py-1 rounded ${c.is_used ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
                             {c.is_used ? 'USED' : 'AVAILABLE'}
                           </span>
