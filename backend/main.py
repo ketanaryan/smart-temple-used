@@ -44,7 +44,7 @@ try:
     
     load_dotenv()
     
-    supabase_url = os.environ.get("SUPABASE_URL", "https://elmiceyijuogyuhlvb.supabase.co")
+    supabase_url = os.environ.get("SUPABASE_URL", "https://dbelmiceyijuogyuhlvb.supabase.co")
     supabase_key = os.environ.get("SUPABASE_ANON_KEY", "")
     supabase_client: Client = create_client(supabase_url, supabase_key) if supabase_key else None
 
