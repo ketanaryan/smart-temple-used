@@ -8,9 +8,11 @@ from database import engine, get_db, SessionLocal
 from services.queue_engine import QueueBalancer
 import uuid
 
+import os
+
 models.Base.metadata.create_all(bind=engine)
 
-app = FastAPI(title="Smart Temple Crowd and Queue Management System")
+app = FastAPI(title="Smart Temple Crowd and Queue Management System", root_path="/api" if os.getenv("VERCEL") else "")
 
 app.add_middleware(
     CORSMiddleware,

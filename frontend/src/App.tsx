@@ -3,7 +3,7 @@ import axios from 'axios';
 import { Users, Clock, AlertTriangle, CalendarCheck, Bell, Cloud, Thermometer, ShieldCheck, CheckCircle2, QrCode, Menu, X } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 
-const API_URL = 'http://127.0.0.1:8000';
+const API_URL = import.meta.env.PROD ? '/api' : 'http://127.0.0.1:8000';
 
 function App() {
   const [temples, setTemples] = useState<any[]>([]);
