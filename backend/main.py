@@ -36,18 +36,17 @@ try:
 
     oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
-    @app.post("/register", response_model=schemas.User)
-    def register_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
-        db_user = db.query(models.User).filter(models.User.email == user.email).first()
-        if db_user:
-            raise HTTPException(status_code=400, detail="Email already registered")
-        
-        hashed_password = get_password_hash(user.password)
-        db_user = models.User(email=user.email, name=user.name, hashed_password=hashed_password)
-        db.add(db_user)
-        db.commit()
-        db.refresh(db_user)
-        return db_user
+
+
+    import os
+    from supabase import create_client, Client
+    from dotenv import load_dotenv
+    
+    load_dotenv()
+    
+    supabase_url = os.environ.get("SUPABASE_URL", "https://elmiceyijuogyuhlvb.supabase.co")
+    supabase_key = os.environ.get("SUPABASE_ANON_KEY", "")
+    supabase_client: Client = create_client(supabase_url, supabase_key) if supabase_key else None
 
     def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
         credentials_exception = HTTPException(
@@ -55,32 +54,32 @@ try:
             detail="Could not validate credentials",
             headers={"WWW-Authenticate": "Bearer"},
         )
-        try:
-            payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-            email: str = payload.get("sub")
-            if email is None:
-                raise credentials_exception
-        except JWTError:
+        if not supabase_client:
+            print("Supabase client not initialized. Check SUPABASE_ANON_KEY environment variable.")
             raise credentials_exception
+            
+        try:
+            # We use Supabase Auth API to verify token and get the user
+            user_res = supabase_client.auth.get_user(token)
+            if not user_res or not user_res.user:
+                raise credentials_exception
+            email = user_res.user.email
+            name = user_res.user.user_metadata.get('name', 'Supabase User') if user_res.user.user_metadata else 'Supabase User'
+        except Exception as e:
+            print(f"Token verification error: {e}")
+            raise credentials_exception
+            
         user = db.query(models.User).filter(models.User.email == email).first()
         if user is None:
-            raise credentials_exception
+            # Auto-create user in our DB if they registered via Supabase and don't exist yet
+            user = models.User(email=email, name=name, hashed_password="managed_by_supabase")
+            db.add(user)
+            db.commit()
+            db.refresh(user)
+            
         return user
 
-    @app.post("/token", response_model=schemas.Token)
-    def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
-        user = db.query(models.User).filter(models.User.email == form_data.username).first()
-        if not user or not verify_password(form_data.password, user.hashed_password):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Incorrect email or password",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
-        access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-        access_token = create_access_token(
-            data={"sub": user.email}, expires_delta=access_token_expires
-        )
-        return {"access_token": access_token, "token_type": "bearer"}
+
 
     @app.get("/users/me/dashboard")
     def get_user_dashboard(current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):

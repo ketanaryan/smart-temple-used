@@ -8,3 +8,7 @@ python-jose[cryptography]
 psycopg2-binary
 python-multipart
 websockets
+
+supabase
+
+python-dotenv

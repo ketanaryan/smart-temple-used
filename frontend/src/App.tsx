@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Users, Clock, AlertTriangle, CalendarCheck, Bell, Cloud, Thermometer, ShieldCheck, CheckCircle2, QrCode, Menu, X } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
+import { supabase } from './supabaseClient';
 
 const API_URL = import.meta.env.PROD ? '/api' : 'http://127.0.0.1:8000';
 
@@ -283,15 +284,14 @@ function App() {
                           const pwd = (document.getElementById('loginPassword') as HTMLInputElement).value;
                           if (!email || !pwd) return alert("Please enter both an email and a password.");
                           try {
-                            const formData = new URLSearchParams();
-                            formData.append('username', email);
-                            formData.append('password', pwd);
-                            const res = await axios.post(`${API_URL}/token`, formData, {
-                              headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+                            const { data, error } = await supabase.auth.signInWithPassword({
+                              email,
+                              password: pwd
                             });
-                            localStorage.setItem('token', res.data.access_token);
+                            if (error) throw error;
+                            localStorage.setItem('token', data.session?.access_token || '');
                             window.location.reload();
-                          } catch (e: any) { alert("Login Failed: " + (e.response?.data?.detail || "Invalid credentials")); }
+                          } catch (e: any) { alert("Login Failed: " + (e.message || "Invalid credentials")); }
                         }}
                         className="w-full mt-2 bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-700 hover:to-orange-600 text-white font-bold py-4 rounded-xl shadow-lg transition-all active:scale-[0.98]"
                       >Login</button>
@@ -319,10 +319,15 @@ function App() {
                           if (pwd !== pwdConfirm) return alert("Passwords do not match!");
                           
                           try {
-                            await axios.post(`${API_URL}/register`, { email, password: pwd, name });
-                            alert("Registered successfully! Please login now.");
+                            const { error } = await supabase.auth.signUp({
+                              email,
+                              password: pwd,
+                              options: { data: { name } }
+                            });
+                            if (error) throw error;
+                            alert("Registered successfully! Please check your email for a confirmation link (if enabled), then login.");
                             setAuthMode('login');
-                          } catch (e: any) { alert("Registration Failed: " + (e.response?.data?.detail || "Error")); }
+                          } catch (e: any) { alert("Registration Failed: " + (e.message || "Error")); }
                         }}
                         className="w-full mt-2 bg-gray-900 hover:bg-black text-white font-bold py-4 rounded-xl shadow-lg transition-all active:scale-[0.98]"
                       >Create Account</button>
