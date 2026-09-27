@@ -340,3 +340,23 @@ def register_temple_admin(data: schemas.TempleAdminRegister, db: Session = Depen
 def read_users_me(current_user: models.User = Depends(get_current_user)):
     return current_user
 
+
+@app.get('/ticket/{token_number}')
+def get_ticket(token_number: str, db: Session = Depends(get_db)):
+    booking = db.query(models.Booking).filter(models.Booking.token_number == token_number).first()
+    if not booking:
+        raise HTTPException(status_code=404, detail='Ticket not found')
+    slot = db.query(models.TimeSlot).filter(models.TimeSlot.id == booking.slot_id).first()
+    temple = db.query(models.Temple).filter(models.Temple.id == slot.temple_id).first()
+    user = db.query(models.User).filter(models.User.id == booking.user_id).first() if booking.user_id else None
+    return {
+        'token': booking.token_number,
+        'status': booking.status,
+        'temple_name': temple.name,
+        'city': temple.city,
+        'date': slot.date,
+        'start_time': slot.start_time,
+        'end_time': slot.end_time,
+        'booking_time': booking.booking_time,
+        'user_name': user.name if user else 'Walk-in Devotee'
+    }

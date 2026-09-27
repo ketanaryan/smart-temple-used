@@ -26,10 +26,24 @@ function App() {
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [staffSelectedTemple, setStaffSelectedTemple] = useState<number | null>(null);
-  
+
+  const [ticketViewToken] = useState<string | null>(new URLSearchParams(window.location.search).get('ticket'));
+  const [ticketData, setTicketData] = useState<any>(null);
+  const [ticketError, setTicketError] = useState('');
+
   useEffect(() => {
-    localStorage.setItem('activeTab', activeTab);
-  }, [activeTab]);
+    if (ticketViewToken) {
+      axios.get(`${API_URL}/ticket/${ticketViewToken}`)
+        .then(res => setTicketData(res.data))
+        .catch(err => setTicketError('Invalid or Expired Ticket'));
+    }
+  }, [ticketViewToken]);
+
+  useEffect(() => {
+    if (!ticketViewToken) {
+      localStorage.setItem('activeTab', activeTab);
+    }
+  }, [activeTab, ticketViewToken]);
   
   const [userDashboard, setUserDashboard] = useState<any>(null);
   const [showBookingForm, setShowBookingForm] = useState(false);
@@ -169,6 +183,71 @@ function App() {
     d.setHours(parseInt(h), parseInt(m));
     return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
+
+  if (ticketViewToken) {
+    return (
+      <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4 font-sans bg-[url('https://images.unsplash.com/photo-1582510003544-4d00b7f74151?q=80&w=2070&auto=format&fit=crop')] bg-cover bg-center bg-fixed">
+        <div className="absolute inset-0 bg-black/60 backdrop-blur-sm"></div>
+        <div className="relative bg-white w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden border border-gray-200">
+          <div className="bg-orange-600 p-6 text-center text-white relative">
+            <div className="absolute -left-4 top-1/2 -translate-y-1/2 w-8 h-8 bg-black/60 rounded-full"></div>
+            <div className="absolute -right-4 top-1/2 -translate-y-1/2 w-8 h-8 bg-black/60 rounded-full"></div>
+            <h2 className="text-sm font-bold uppercase tracking-widest text-orange-200 mb-1">e-Darshan Ticket</h2>
+            <h1 className="text-2xl font-black">{ticketData ? ticketData.temple_name : 'Loading...'}</h1>
+          </div>
+          
+          <div className="p-8 flex flex-col gap-6 relative">
+            {ticketError ? (
+              <div className="text-red-500 font-bold text-center py-10 flex flex-col items-center gap-2">
+                <AlertTriangle className="w-12 h-12 mb-2" />
+                {ticketError}
+              </div>
+            ) : !ticketData ? (
+              <div className="text-gray-500 font-bold text-center py-10 flex flex-col items-center gap-2">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-500 mb-2"></div>
+                Verifying ticket...
+              </div>
+            ) : (
+              <>
+                <div className="flex justify-between items-center border-b border-dashed border-gray-300 pb-6">
+                  <div>
+                    <div className="text-xs font-bold text-gray-400 uppercase">Devotee</div>
+                    <div className="text-lg font-black text-gray-800">{ticketData.user_name}</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-xs font-bold text-gray-400 uppercase">Status</div>
+                    <div className="text-lg font-black text-green-600 bg-green-50 px-2 rounded">{ticketData.status}</div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <div className="text-xs font-bold text-gray-400 uppercase">Date</div>
+                    <div className="text-md font-bold text-gray-800">{ticketData.date}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs font-bold text-gray-400 uppercase">Time Slot</div>
+                    <div className="text-md font-bold text-gray-800">{formatTime(ticketData.start_time)} - {formatTime(ticketData.end_time)}</div>
+                  </div>
+                </div>
+
+                <div className="mt-4 flex flex-col items-center">
+                  <div className="p-4 bg-gray-50 rounded-2xl border border-gray-100 mb-2">
+                    <QRCodeSVG value={ticketData.token} size={150} level="H" fgColor="#000000" />
+                  </div>
+                  <div className="text-xs font-mono text-gray-400">{ticketData.token}</div>
+                </div>
+              </>
+            )}
+          </div>
+          
+          <div className="bg-gray-50 p-4 text-center border-t border-gray-100">
+            <p className="text-xs font-bold text-gray-400">Powered by Smart Temple System</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={`min-h-screen text-gray-800 font-sans flex flex-col ${activeTab === 'home' ? 'bg-black' : 'bg-gray-50'}`}>
@@ -491,7 +570,7 @@ function App() {
                         <h3 className="text-2xl font-black mb-2 text-green-900">Booking Confirmed!</h3>
                         <p className="mb-6 font-medium text-green-700">Your digital e-Token has been generated.</p>
                         <div className="bg-white p-6 inline-block rounded-2xl shadow-sm border border-green-100">
-                          <QRCodeSVG value={bookedToken} size={180} level="H" includeMargin={true} fgColor="#064e3b" />
+                          <QRCodeSVG value={`${window.location.origin}?ticket=${bookedToken}`} size={180} level="H" includeMargin={true} fgColor="#064e3b" />
                         </div>
                         <p className="text-sm text-gray-600 mt-6 flex justify-center items-center gap-2 font-bold"><QrCode className="w-5 h-5"/> Show this QR at the smart entrance gate</p>
                         {notifyWhatsApp && <p className="text-sm font-black text-green-700 mt-3">✓ WhatsApp alerts enabled for +91 ********</p>}
