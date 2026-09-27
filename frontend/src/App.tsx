@@ -784,6 +784,35 @@ function App() {
                   </div>
                 </div>
 
+                <div className="bg-gray-900 border border-gray-800 p-6 rounded-2xl flex flex-col gap-4 shadow-xl relative overflow-hidden mt-4">
+                  <div className="flex justify-between items-center">
+                    <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                      <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse"></div>
+                      Live CCTV Feed
+                    </h3>
+                    <span className="text-xs font-mono text-gray-400">CAM-01 / GATE A</span>
+                  </div>
+                  <div className="relative w-full bg-black rounded-lg overflow-hidden border border-gray-700 flex items-center justify-center h-[300px]">
+                    <video 
+                      autoPlay 
+                      playsInline 
+                      muted 
+                      className="w-full h-full object-cover opacity-80 mix-blend-screen"
+                      ref={(videoRef) => {
+                        if (videoRef && !videoRef.srcObject) {
+                          navigator.mediaDevices.getUserMedia({ video: true })
+                            .then(stream => { videoRef.srcObject = stream; })
+                            .catch(err => console.error("Camera access denied:", err));
+                        }
+                      }}
+                    />
+                    <div className="absolute top-4 left-4 text-[12px] font-mono text-white/90 font-bold drop-shadow-md">REC</div>
+                    <div className="absolute top-4 right-4 text-[12px] font-mono text-white/90 font-bold drop-shadow-md">LIVE</div>
+                    <div className="absolute inset-0 pointer-events-none border-[1px] border-white/10" style={{ backgroundImage: 'linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px)', backgroundSize: '100% 4px' }}></div>
+                  </div>
+                  <p className="text-[10px] text-gray-500 text-center uppercase tracking-widest mt-2">Authorized Personnel Only</p>
+                </div>
+
               </div>
             )}
           </section>
