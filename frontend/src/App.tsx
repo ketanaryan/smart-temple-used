@@ -656,7 +656,14 @@ function App() {
 
         {activeTab === 'staff' && (
           <section className="bg-white p-8 rounded-xl shadow-sm border border-gray-100 flex flex-col gap-8 max-w-4xl mx-auto">
-            {!staffSelectedTemple ? (
+            {!localStorage.getItem('token') ? (
+              <div className="flex flex-col gap-4 text-center items-center py-12">
+                <ShieldCheck className="w-16 h-16 text-gray-400 mb-2" />
+                <h2 className="text-2xl font-black text-gray-900">Restricted Area</h2>
+                <p className="text-gray-500 max-w-md">Please login to access the Live Crowd Status portal.</p>
+                <button onClick={() => setActiveTab('devotee')} className="mt-4 bg-orange-600 text-white font-bold py-3 px-8 rounded-xl hover:bg-orange-700 transition shadow-sm">Go to Login</button>
+              </div>
+            ) : !staffSelectedTemple ? (
               <div className="flex flex-col gap-4 text-center items-center py-12">
                 <ShieldCheck className="w-16 h-16 text-blue-500 mb-2" />
                 <h2 className="text-2xl font-black text-gray-900">Select Temple to Monitor</h2>
