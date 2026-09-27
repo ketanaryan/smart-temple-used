@@ -115,6 +115,10 @@ function App() {
       });
       setUserDashboard(res.data);
       setIsAdmin(res.data.user?.is_admin || false);
+      if (res.data.user?.is_admin && res.data.user?.email !== 'mainadmin@smarttemple.com' && res.data.user?.managed_temples?.length > 0) {
+        setAdminTempleState(res.data.user.managed_temples[0].id);
+        adminTempleIdRef.current = res.data.user.managed_temples[0].id;
+      }
       if (res.data.user?.email === 'mainadmin@smarttemple.com') {
         fetchAdminCodes();
       }
@@ -855,7 +859,7 @@ function App() {
                     onChange={(e) => handleAdminTempleChange(Number(e.target.value))}
                     className="w-full p-4 border-2 border-gray-200 rounded-xl bg-gray-50 text-gray-800 font-bold text-lg focus:border-orange-500 outline-none transition-colors"
                   >
-                    {temples.map((t) => (
+                    {(userDashboard?.user?.email === 'mainadmin@smarttemple.com' ? temples : (userDashboard?.user?.managed_temples || [])).map((t: any) => (
                       <option key={t.id} value={t.id}>{t.name}, {t.city}</option>
                     ))}
                   </select>

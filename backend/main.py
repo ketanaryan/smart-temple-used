@@ -100,11 +100,17 @@ try:
                 "end_time": slot.end_time,
                 "booking_time": b.booking_time
             })
+        managed_temples = []
+        if current_user.is_admin:
+            m_temples = db.query(models.Temple).filter(models.Temple.admin_id == current_user.id).all()
+            managed_temples = [{"id": t.id, "name": t.name, "city": t.city} for t in m_temples]
+
         return {
             "user": {
                 "name": current_user.name,
                 "email": current_user.email,
-                "is_admin": current_user.is_admin
+                "is_admin": current_user.is_admin,
+                "managed_temples": managed_temples
             },
             "bookings": results
         }
