@@ -21,10 +21,14 @@ function App() {
   const [notifyWhatsApp, setNotifyWhatsApp] = useState(true);
   const [currentToken, setCurrentToken] = useState('');
   
-  const [activeTab, setActiveTab] = useState('home'); // 'home' | 'devotee' | 'staff'
+  const [activeTab, setActiveTab] = useState(localStorage.getItem('activeTab') || 'home'); // 'home' | 'devotee' | 'staff' | 'admin'
   const [isAdmin, setIsAdmin] = useState(localStorage.getItem('adminToken') === 'true');
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  
+  useEffect(() => {
+    localStorage.setItem('activeTab', activeTab);
+  }, [activeTab]);
   
   const [userDashboard, setUserDashboard] = useState<any>(null);
   const [showBookingForm, setShowBookingForm] = useState(false);
