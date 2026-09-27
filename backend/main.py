@@ -103,7 +103,8 @@ try:
         return {
             "user": {
                 "name": current_user.name,
-                "email": current_user.email
+                "email": current_user.email,
+                "is_admin": current_user.is_admin
             },
             "bookings": results
         }
@@ -298,4 +299,44 @@ except Exception as e:
     @app.get("/{path:path}")
     def catch_all(path: str):
         return {"error": "Failed to initialize server", "traceback": error_msg}
+
+
+@app.post('/admin/generate-code', response_model=schemas.TempleCodeCreate)
+def generate_temple_code(code_data: schemas.TempleCodeCreate, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    # Only allow main admin
+    if current_user.email != 'mainadmin@smarttemple.com':
+        raise HTTPException(status_code=403, detail='Only Main Admin can generate codes')
+    db_code = models.TempleCode(code=code_data.code, created_by=current_user.id)
+    db.add(db_code)
+    try:
+        db.commit()
+    except:
+        db.rollback()
+        raise HTTPException(status_code=400, detail='Code already exists')
+    return code_data
+
+@app.post('/admin/register-temple')
+def register_temple_admin(data: schemas.TempleAdminRegister, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    # Verify code
+    code = db.query(models.TempleCode).filter(models.TempleCode.code == data.temple_code, models.TempleCode.is_used == False).first()
+    if not code:
+        raise HTTPException(status_code=400, detail='Invalid or already used Temple Code')
+    
+    # Update User
+    current_user.is_admin = True
+    current_user.name = data.name
+    
+    # Create Temple
+    new_temple = models.Temple(name=data.temple_name, city=data.city, admin_id=current_user.id)
+    db.add(new_temple)
+    
+    # Mark code as used
+    code.is_used = True
+    db.commit()
+    return {'message': 'Temple Admin registered successfully'}
+
+
+@app.get('/users/me', response_model=schemas.User)
+def read_users_me(current_user: models.User = Depends(get_current_user)):
+    return current_user
 

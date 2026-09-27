@@ -70,3 +70,12 @@ class Booking(BookingBase):
 
     class Config:
         from_attributes = True
+
+class TempleAdminRegister(BaseModel):
+    name: str
+    city: str
+    temple_name: str
+    temple_code: str
+
+class TempleCodeCreate(BaseModel):
+    code: str

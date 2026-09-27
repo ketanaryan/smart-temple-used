@@ -22,8 +22,18 @@ class Temple(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, index=True)
     city = Column(String, index=True)
+    admin_id = Column(Integer, ForeignKey("users.id"), nullable=True)
 
     slots = relationship("TimeSlot", back_populates="temple")
+    admin = relationship("User", foreign_keys=[admin_id])
+
+class TempleCode(Base):
+    __tablename__ = "temple_codes"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    code = Column(String, unique=True, index=True)
+    is_used = Column(Boolean, default=False)
+    created_by = Column(Integer, ForeignKey("users.id"))
 
 
 class TimeSlot(Base):

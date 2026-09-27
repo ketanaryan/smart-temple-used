@@ -80,6 +80,7 @@ function App() {
         headers: { Authorization: `Bearer ${token}` }
       });
       setUserDashboard(res.data);
+      setIsAdmin(res.data.user?.is_admin || false);
     } catch (e) {
       console.error("Session expired or invalid", e);
       localStorage.removeItem('token');
@@ -647,26 +648,52 @@ function App() {
                 Temple Admin Portal
               </h2>
             </div>
+
+            {userDashboard?.user?.email === 'mainadmin@smarttemple.com' && (
+              <div className="bg-blue-50 border border-blue-100 p-6 rounded-2xl flex flex-col items-center justify-center text-center shadow-sm mb-6">
+                <h4 className="font-bold text-blue-800 mb-2">Main Admin Controls</h4>
+                <p className="text-blue-600 text-sm mb-4">Generate unique Temple Codes to distribute to Temple Admins.</p>
+                <button onClick={async () => {
+                  const code = prompt("Enter a new unique temple code:");
+                  if (code) {
+                    try {
+                      await axios.post(`${API_URL}/admin/generate-code`, {code}, { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }});
+                      alert("Code generated successfully!");
+                    } catch(e: any) { alert("Failed: " + (e.response?.data?.detail || e.message)); }
+                  }
+                }} className="bg-blue-600 text-white py-2 px-6 rounded-lg font-bold hover:bg-blue-700">Generate New Temple Code</button>
+              </div>
+            )}
             
             {!isAdmin ? (
               <div className="bg-gray-50 border p-8 rounded-2xl flex flex-col items-center justify-center min-h-[40vh] text-center shadow-sm">
                 <ShieldCheck className="w-16 h-16 text-gray-400 mb-4" />
                 <h3 className="text-xl font-bold text-gray-800 mb-2">Restricted Area</h3>
-                <p className="text-gray-500 mb-6 max-w-md">You must authenticate as a Temple Administrator to view and control the live queue mechanics.</p>
-                <button 
-                  onClick={() => {
-                    const pwd = prompt("Enter admin password (password: admin):");
-                    if (pwd === "admin") {
-                      localStorage.setItem('adminToken', 'true');
-                      setIsAdmin(true);
-                    } else if (pwd) {
-                      alert("Incorrect password.");
-                    }
-                  }}
-                  className="bg-gray-800 hover:bg-gray-700 text-white px-8 py-3 rounded-lg font-bold text-md shadow-lg transition-all"
-                >
-                  Admin Login
-                </button>
+                {!localStorage.getItem('token') ? (
+                  <p className="text-gray-500 mb-6 max-w-md">Please login via the Home tab to access or register your temple portal.</p>
+                ) : (
+                  <div className="w-full max-w-md mt-4 flex flex-col gap-3 text-left">
+                    <p className="text-gray-500 mb-4 text-center">Register your temple by providing the unique Temple Code assigned by the Main Admin.</p>
+                    <input id="adminCity" placeholder="City (e.g. Mumbai)" className="p-3 border rounded-lg w-full outline-none focus:border-orange-500" />
+                    <input id="adminTempleName" placeholder="Temple Name" className="p-3 border rounded-lg w-full outline-none focus:border-orange-500" />
+                    <input id="adminTempleCode" placeholder="Temple Code" className="p-3 border rounded-lg w-full outline-none focus:border-orange-500" />
+                    <button 
+                      onClick={async () => {
+                        const city = (document.getElementById('adminCity') as HTMLInputElement).value;
+                        const templeName = (document.getElementById('adminTempleName') as HTMLInputElement).value;
+                        const code = (document.getElementById('adminTempleCode') as HTMLInputElement).value;
+                        if (!city || !templeName || !code) return alert("Please fill all fields.");
+                        try {
+                          await axios.post(`${API_URL}/admin/register-temple`, { city, temple_name: templeName, temple_code: code, name: userDashboard?.user?.name || "Admin" }, { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }});
+                          alert("Registered as Admin successfully! Reloading...");
+                          window.location.reload();
+                        } catch(e: any) { alert("Registration Failed: " + (e.response?.data?.detail || e.message)); }
+                      }}
+                      className="bg-orange-600 hover:bg-orange-700 text-white px-8 py-3 mt-2 rounded-lg font-bold shadow-lg transition-all"
+                    >Register as Admin</button>
+                    
+                  </div>
+                )}
               </div>
             ) : (
               <div className="flex flex-col gap-6 animate-in slide-in-from-bottom-4 duration-500">
