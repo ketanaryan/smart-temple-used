@@ -50,9 +50,18 @@ function App() {
     }
   };
 
+  const adminTempleIdRef = React.useRef<number>(1);
+  const [adminTempleState, setAdminTempleState] = useState<number>(1);
+
+  const handleAdminTempleChange = (id: number) => {
+    adminTempleIdRef.current = id;
+    setAdminTempleState(id);
+    fetchQueueStatus();
+  };
+
   const fetchQueueStatus = async () => {
     try {
-      const res = await axios.get(`${API_URL}/queue/status`);
+      const res = await axios.get(`${API_URL}/queue/status?temple_id=${adminTempleIdRef.current}`);
       setQueueStatus((prev: any) => ({
         ...res.data,
         cv_alerts: prev?.cv_alerts?.status !== "INITIALIZING" && prev?.cv_alerts ? prev.cv_alerts : res.data.cv_alerts
@@ -135,12 +144,12 @@ function App() {
 
   const handleCallNext = async () => {
     try {
-      const res = await axios.post(`${API_URL}/queue/call-next`);
+      const res = await axios.post(`${API_URL}/queue/call-next?temple_id=${adminTempleIdRef.current}`);
       if (res.data.called_token) {
         setCurrentToken(res.data.called_token);
         fetchQueueStatus();
       } else {
-        alert("No devotees in queue!");
+        alert("No devotees in queue for this temple!");
       }
     } catch (e) {
       console.error(e);
@@ -656,6 +665,19 @@ function App() {
               </div>
             ) : (
               <div className="flex flex-col gap-6 animate-in slide-in-from-bottom-4 duration-500">
+                <div className="flex flex-col gap-2">
+                  <label className="text-sm font-bold text-gray-500 uppercase tracking-wider">Managing Temple</label>
+                  <select 
+                    value={adminTempleState}
+                    onChange={(e) => handleAdminTempleChange(Number(e.target.value))}
+                    className="w-full p-4 border-2 border-gray-200 rounded-xl bg-gray-50 text-gray-800 font-bold text-lg focus:border-orange-500 outline-none transition-colors"
+                  >
+                    {temples.map((t) => (
+                      <option key={t.id} value={t.id}>{t.name}, {t.city}</option>
+                    ))}
+                  </select>
+                </div>
+                
                 <div className="bg-gray-900 text-white p-6 rounded-2xl flex flex-col md:flex-row justify-between items-center gap-6 md:gap-0 shadow-lg border border-gray-800 text-center md:text-left">
                   <div>
                     <div className="text-gray-400 font-bold uppercase tracking-widest text-sm mb-1">Queue Control</div>
