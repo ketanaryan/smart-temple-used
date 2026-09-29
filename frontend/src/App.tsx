@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Users, Clock, AlertTriangle, CalendarCheck, Bell, Cloud, Thermometer, ShieldCheck, CheckCircle2, QrCode, Menu, X } from 'lucide-react';
+import { Users, Clock, AlertTriangle, CalendarCheck, Bell, Cloud, Thermometer, ShieldCheck, CheckCircle2, QrCode, Menu, X, Camera } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { supabase } from './supabaseClient';
 
@@ -646,6 +646,53 @@ function App() {
                     )}
                   </div>
                 )}
+
+                {/* NEW: Multi-Camera Re-ID Journey Tracking */}
+                {queueStatus.cv_alerts && queueStatus.cv_alerts.cameras && queueStatus.cv_alerts.cameras.length > 0 && (
+                  <div className="mt-8 border-2 border-gray-200 p-6 rounded-2xl bg-white shadow-sm">
+                    <div className="flex justify-between items-center mb-6">
+                      <h3 className="font-black text-xl text-gray-900 flex items-center gap-3">
+                        <Camera className="w-6 h-6 text-gray-500" />
+                        Multi-Camera Re-ID Pipeline (ByteTrack)
+                      </h3>
+                      <div className="flex items-center gap-2 text-xs font-bold bg-green-50 text-green-700 px-3 py-1 rounded-full border border-green-200">
+                        <span className="w-2 h-2 rounded-full bg-green-500 animate-ping"></span> Live Tracking Active
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                      {queueStatus.cv_alerts.cameras.map((cam: any, i: number) => (
+                        <div key={i} className="bg-gray-50 border border-gray-200 rounded-xl p-4 text-center shadow-inner relative overflow-hidden">
+                          <div className="absolute top-0 right-0 bg-gray-200 text-gray-500 text-[9px] font-black px-2 py-1 rounded-bl-lg">{cam.camera_id}</div>
+                          <div className="text-xs font-bold text-gray-500 uppercase tracking-widest mt-2 mb-1">{cam.zone_name}</div>
+                          <div className="text-3xl font-black text-gray-800">{cam.crowd_count}</div>
+                          <div className="text-[10px] font-semibold text-gray-400 uppercase">Detects</div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {queueStatus.cv_alerts.reid_matches && queueStatus.cv_alerts.reid_matches.length > 0 && (
+                      <div className="bg-gray-900 text-white p-5 rounded-xl border border-black shadow-lg">
+                        <h4 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-4">Cross-Camera Matches (Devotee Journey)</h4>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                          {queueStatus.cv_alerts.reid_matches.map((match: any, idx: number) => (
+                            <div key={idx} className="bg-gray-800 border border-gray-700 p-3 rounded-lg flex justify-between items-center">
+                              <div>
+                                <div className="text-xs font-bold text-blue-400">{match.person_id}</div>
+                                <div className="text-xs text-gray-300">Seen at: {match.current_zone}</div>
+                              </div>
+                              <div className="text-right">
+                                <div className="text-lg font-black text-white">{match.journey_time_mins}m</div>
+                                <div className="text-[10px] text-gray-500 uppercase font-bold">Elapsed</div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
               </div>
             )}
             </div>
