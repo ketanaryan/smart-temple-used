@@ -794,6 +794,49 @@ function App() {
                     </div>
                   </div>
                 </div>
+
+                {/* NEW: AI Prediction & Action Controller */}
+                {queueStatus.ai_predictions && (
+                  <div className={`mt-4 border-2 p-6 rounded-2xl shadow-sm transition-all duration-500 relative overflow-hidden ${queueStatus.ai_predictions.risk_level === 'CRITICAL' ? 'bg-red-50 border-red-300' : queueStatus.ai_predictions.risk_level === 'WARNING' ? 'bg-orange-50 border-orange-300' : 'bg-green-50 border-green-300'}`}>
+                    
+                    <div className="flex items-start gap-4">
+                      <div className={`p-3 rounded-xl shadow-inner ${queueStatus.ai_predictions.risk_level === 'CRITICAL' ? 'bg-red-500 text-white animate-pulse' : queueStatus.ai_predictions.risk_level === 'WARNING' ? 'bg-orange-500 text-white' : 'bg-green-500 text-white'}`}>
+                        <AlertTriangle className="w-8 h-8" />
+                      </div>
+                      
+                      <div className="flex-1">
+                        <div className="flex justify-between items-start mb-2">
+                          <h3 className={`font-black text-xl tracking-tight ${queueStatus.ai_predictions.risk_level === 'CRITICAL' ? 'text-red-900' : queueStatus.ai_predictions.risk_level === 'WARNING' ? 'text-orange-900' : 'text-green-900'}`}>
+                            Intelligent Crowd Flow Controller
+                          </h3>
+                          <span className={`px-3 py-1 text-xs font-black rounded-full uppercase tracking-widest shadow-sm border ${queueStatus.ai_predictions.risk_level === 'CRITICAL' ? 'bg-red-100 text-red-800 border-red-200' : queueStatus.ai_predictions.risk_level === 'WARNING' ? 'bg-orange-100 text-orange-800 border-orange-200' : 'bg-green-100 text-green-800 border-green-200'}`}>
+                            {queueStatus.ai_predictions.risk_level}
+                          </span>
+                        </div>
+                        
+                        <div className={`font-medium mb-4 ${queueStatus.ai_predictions.risk_level === 'CRITICAL' ? 'text-red-700' : queueStatus.ai_predictions.risk_level === 'WARNING' ? 'text-orange-700' : 'text-green-700'}`}>
+                          {queueStatus.ai_predictions.prediction_text}
+                        </div>
+                        
+                        <div className="bg-white/60 p-4 rounded-xl border border-black/5 shadow-sm">
+                          <div className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-1">Recommended Action</div>
+                          <div className="text-gray-900 font-bold">{queueStatus.ai_predictions.recommended_action}</div>
+                          
+                          {queueStatus.ai_predictions.slots_auto_adjusted > 0 && (
+                            <div className="mt-3 flex items-center gap-2 text-sm font-semibold text-blue-700 bg-blue-50/50 p-2 rounded-lg">
+                              <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></span>
+                              Dynamic Time-Slot Capacity Engine active: Automatically scaled {queueStatus.ai_predictions.slots_auto_adjusted} upcoming time slots.
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+
+                
+
                 
 
               </>

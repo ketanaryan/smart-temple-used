@@ -239,11 +239,42 @@ try:
         mmk_results = QueueBalancer.calculate_mmk_metrics(arrival_rate_lambda, service_rate_mu, num_servers_k)
         expected_wait_mins = mmk_results["expected_wait_mins"]
 
-        # Deterministic mock environmental data per temple to look realistic for judges
+        # Feature: Predictive Crowd Risk & Intelligent Crowd Flow Controller
+        predicted_queue = max(0, total_in_queue + (arrival_rate_lambda * 30) - (service_rate_mu * num_servers_k * 30))
+        if predicted_queue > 80:
+            risk_level = "CRITICAL"
+            prediction_text = f"High congestion predicted in 30 minutes. Est. queue: {int(predicted_queue)} people."
+            recommended_action = "IMMEDIATE: Halt walk-in tokens. Open overflow holding area. Prioritize pre-booked devotees."
+        elif predicted_queue > 30:
+            risk_level = "WARNING"
+            prediction_text = f"Moderate congestion predicted in 30 minutes. Est. queue: {int(predicted_queue)} people."
+            recommended_action = "Reduce walk-in token issuance by 30%. Monitor Zone A."
+        else:
+            risk_level = "NORMAL"
+            prediction_text = "Steady crowd flow expected over the next 30 minutes."
+            recommended_action = "Maintain current operations. Open all standard gates."
+            
+        # Feature: Dynamic Time-Slot Capacity Auto-Adjust
+        import datetime
+        current_time = datetime.datetime.now().time()
+        today = datetime.datetime.now().date()
+        upcoming_slots = db.query(models.TimeSlot).filter(
+            models.TimeSlot.temple_id == temple_id,
+            models.TimeSlot.date == today,
+            models.TimeSlot.start_time >= current_time
+        ).all()
+        
+        # Dynamically set capacities to prevent future crowding
+        for slot in upcoming_slots:
+            if risk_level == "CRITICAL": slot.max_capacity = 25
+            elif risk_level == "WARNING": slot.max_capacity = 40
+            elif risk_level == "NORMAL": slot.max_capacity = 60
+        db.commit()
+
         env_data = {
-            1: {"temp": "28.5°C", "aqi": 112, "aqi_status": "MODERATE", "cap": "76%", "sec": "SECURE"}, # Varanasi
-            2: {"temp": "22.1°C", "aqi": 42, "aqi_status": "GOOD", "cap": "92%", "sec": "ELEVATED"},    # Tirupati
-            3: {"temp": "12.0°C", "aqi": 28, "aqi_status": "EXCELLENT", "cap": "45%", "sec": "SECURE"}, # Vaishno Devi
+            1: {"temp": "28.5AC", "aqi": 112, "aqi_status": "MODERATE", "cap": "76%", "sec": "SECURE"},
+            2: {"temp": "22.1AC", "aqi": 42, "aqi_status": "GOOD", "cap": "92%", "sec": "ELEVATED"},
+            3: {"temp": "12.0AC", "aqi": 28, "aqi_status": "EXCELLENT", "cap": "45%", "sec": "SECURE"},
         }
         mock_env = env_data.get(temple_id, env_data[1])
 
@@ -259,7 +290,14 @@ try:
                 "expected_queue_length": mmk_results["expected_queue_length"] if mmk_results["expected_queue_length"] != float('inf') else "Infinite",
                 "utilization_pct": mmk_results["utilization"]
             },
+            "ai_predictions": {
+                "risk_level": risk_level,
+                "prediction_text": prediction_text,
+                "recommended_action": recommended_action,
+                "slots_auto_adjusted": len(upcoming_slots)
+            },
             "environment": mock_env,
+
             "cv_alerts": {
                 "detected_crowd": "Waiting for CV feed...",
                 "expected_devotees": "...",
