@@ -9,6 +9,9 @@ const API_URL = import.meta.env.PROD ? '/api' : 'http://127.0.0.1:8000';
 function App() {
   const [temples, setTemples] = useState<any[]>([]);
   const [slots, setSlots] = useState<any[]>([]);
+  const [isLoadingSlots, setIsLoadingSlots] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedCity, setSelectedCity] = useState('All Cities');
   
   const [selectedTemple, setSelectedTemple] = useState('');
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
@@ -59,7 +62,11 @@ function App() {
   };
 
   const fetchSlots = async () => {
-    if (!selectedTemple || !selectedDate) return;
+    if (!selectedTemple || !selectedDate) {
+      setSlots([]);
+      return;
+    }
+    setIsLoadingSlots(true);
     try {
       const res = await axios.get(`${API_URL}/temples/${selectedTemple}/slots`, {
         params: { date_str: selectedDate }
@@ -68,6 +75,8 @@ function App() {
       setSelectedSlot('');
     } catch (e) {
       console.error(e);
+    } finally {
+      setIsLoadingSlots(false);
     }
   };
 
@@ -357,24 +366,25 @@ function App() {
         )}
 
         {activeTab === 'devotee' && (
-          <section className="relative flex-1 flex flex-col items-center justify-center p-4 md:p-12 min-h-[85vh] animate-in fade-in duration-500 -mt-2">
+          <section className="relative flex-1 flex flex-col items-center justify-center p-4 md:p-8 min-h-[85vh] animate-in fade-in duration-500 -mt-2">
             <div 
               className="absolute inset-0 z-0 bg-cover bg-center filter blur-sm scale-[1.02]"
               style={{ backgroundImage: "url('/temple-bg.jpg')" }}
             >
-              <div className="absolute inset-0 bg-black/50"></div>
+              <div className="absolute inset-0 bg-black/70"></div>
             </div>
 
-            <div className="relative z-10 bg-white/95 backdrop-blur-xl p-6 sm:p-8 md:p-10 rounded-2xl md:rounded-3xl shadow-2xl border border-white/40 max-w-xl w-[95%] md:w-full mx-auto my-4 md:my-0">
-              <div className="text-center mb-6 md:mb-8">
-                <div className="inline-flex bg-orange-100 p-2 md:p-3 rounded-full mb-3 md:mb-4">
-                  <CalendarCheck className="w-6 h-6 md:w-8 md:h-8 text-orange-600" />
-                </div>
-                <h2 className="text-2xl md:text-3xl font-black text-gray-900 tracking-tight">Book your Darshan</h2>
-                <p className="text-gray-500 font-medium mt-2">Secure your digital token for a peaceful visit.</p>
-              </div>
-
+            <div className={`relative z-10 bg-white/95 backdrop-blur-xl p-6 sm:p-8 md:p-10 rounded-2xl md:rounded-3xl shadow-2xl border border-white/40 my-4 md:my-0 ${localStorage.getItem('token') ? 'max-w-6xl w-full' : 'max-w-xl w-[95%] md:w-full mx-auto'}`}>
+              
               {!localStorage.getItem('token') ? (
+                <>
+                <div className="text-center mb-6 md:mb-8">
+                  <div className="inline-flex bg-orange-100 p-2 md:p-3 rounded-full mb-3 md:mb-4">
+                    <CalendarCheck className="w-6 h-6 md:w-8 md:h-8 text-orange-600" />
+                  </div>
+                  <h2 className="text-2xl md:text-3xl font-black text-gray-900 tracking-tight">Book your Darshan</h2>
+                  <p className="text-gray-500 font-medium mt-2">Secure your digital token for a peaceful visit.</p>
+                </div>
                 <div className="bg-orange-50/80 p-5 md:p-8 rounded-xl md:rounded-2xl border border-orange-100/50 mb-6 text-center shadow-inner relative overflow-hidden transition-all duration-300">
                   <h3 className="font-bold text-orange-900 mb-2 text-lg md:text-xl">{authMode === 'login' ? 'Welcome Back' : 'Create an Account'}</h3>
                   <p className="text-orange-700/80 text-sm mb-6">
@@ -392,316 +402,259 @@ function App() {
                           const pwd = (document.getElementById('loginPassword') as HTMLInputElement).value;
                           if (!email || !pwd) return alert("Please enter both an email and a password.");
                           try {
-                            const { data, error } = await supabase.auth.signInWithPassword({
-                              email,
-                              password: pwd
-                            });
+                            const { data, error } = await supabase.auth.signInWithPassword({ email, password: pwd });
                             if (error) throw error;
                             localStorage.setItem('token', data.session?.access_token || '');
                             window.location.reload();
-                          } catch (e: any) { alert("Login Failed: " + (e.message || "Invalid credentials")); }
+                          } catch(e: any) { alert("Login Failed: " + (e.message)); }
                         }}
-                        className="w-full mt-2 bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-700 hover:to-orange-600 text-white font-bold py-4 rounded-xl shadow-lg transition-all active:scale-[0.98]"
-                      >Login</button>
-                      
+                        className="bg-orange-600 hover:bg-orange-700 text-white font-bold py-4 rounded-xl shadow-md transition-all active:scale-95"
+                      >
+                        Log In
+                      </button>
                       <p className="mt-4 text-sm text-gray-600">
-                        Don't have an account?{' '}
-                        <button onClick={() => setAuthMode('register')} className="text-orange-600 font-bold hover:underline">Register here</button>
+                        Don't have an account? <button onClick={() => setAuthMode('register')} className="text-orange-600 font-bold hover:underline">Register here</button>
                       </p>
                     </div>
                   ) : (
                     <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-right-4 duration-300">
-                      
-                      <div className="flex bg-orange-100/50 p-1 rounded-xl mb-2">
-                        <button onClick={() => setRegisterRole('devotee')} className={`flex-1 py-2 text-sm font-bold rounded-lg transition ${registerRole === 'devotee' ? 'bg-white shadow-sm text-orange-600' : 'text-gray-500 hover:text-gray-700'}`}>Devotee</button>
-                        <button onClick={() => setRegisterRole('admin')} className={`flex-1 py-2 text-sm font-bold rounded-lg transition ${registerRole === 'admin' ? 'bg-white shadow-sm text-orange-600' : 'text-gray-500 hover:text-gray-700'}`}>Temple Admin</button>
-                      </div>
-
-                      <input id="regName" type="text" placeholder="Full Name" className="p-4 border border-orange-200/50 rounded-xl bg-white shadow-sm focus:ring-2 focus:ring-orange-500 outline-none transition" />
+                      <input id="regName" placeholder="Full Name" className="p-4 border border-orange-200/50 rounded-xl bg-white shadow-sm focus:ring-2 focus:ring-orange-500 outline-none transition" />
                       <input id="regEmail" type="email" placeholder="Email Address" className="p-4 border border-orange-200/50 rounded-xl bg-white shadow-sm focus:ring-2 focus:ring-orange-500 outline-none transition" />
                       <input id="regPassword" type="password" placeholder="Password" className="p-4 border border-orange-200/50 rounded-xl bg-white shadow-sm focus:ring-2 focus:ring-orange-500 outline-none transition" />
-                      <input id="regPasswordConfirm" type="password" placeholder="Re-type Password" className="p-4 border border-orange-200/50 rounded-xl bg-white shadow-sm focus:ring-2 focus:ring-orange-500 outline-none transition" />
+                      <select id="regRole" className="p-4 border border-orange-200/50 rounded-xl bg-white shadow-sm focus:ring-2 focus:ring-orange-500 outline-none transition text-gray-700 font-medium">
+                        <option value="devotee">Devotee (Book Darshan)</option>
+                        <option value="admin">Temple Admin</option>
+                      </select>
                       
-                      {registerRole === 'admin' && (
-                        <div className="flex flex-col gap-4 animate-in slide-in-from-top-2 duration-300 bg-orange-50 p-4 rounded-xl border border-orange-200/50 mt-2">
-                          <p className="text-xs font-bold text-orange-800 uppercase tracking-wider mb-1">Temple Details</p>
-                          <input id="regAdminCity" type="text" placeholder="City (e.g. Mumbai)" className="p-4 border border-orange-200/50 rounded-xl bg-white shadow-sm focus:ring-2 focus:ring-orange-500 outline-none transition" />
-                          <input id="regAdminTempleName" type="text" placeholder="Temple Name" className="p-4 border border-orange-200/50 rounded-xl bg-white shadow-sm focus:ring-2 focus:ring-orange-500 outline-none transition" />
-                          <input id="regAdminTempleCode" type="text" placeholder="Temple Code (from Main Admin)" className="p-4 border border-orange-200/50 rounded-xl bg-white shadow-sm focus:ring-2 focus:ring-orange-500 outline-none transition" />
-                        </div>
-                      )}
-
                       <button 
                         onClick={async () => {
                           const name = (document.getElementById('regName') as HTMLInputElement).value;
                           const email = (document.getElementById('regEmail') as HTMLInputElement).value;
                           const pwd = (document.getElementById('regPassword') as HTMLInputElement).value;
-                          const pwdConfirm = (document.getElementById('regPasswordConfirm') as HTMLInputElement).value;
+                          const role = (document.getElementById('regRole') as HTMLSelectElement).value;
                           
-                          let adminCity = '', adminTempleName = '', adminTempleCode = '';
-                          if (registerRole === 'admin') {
-                            adminCity = (document.getElementById('regAdminCity') as HTMLInputElement).value;
-                            adminTempleName = (document.getElementById('regAdminTempleName') as HTMLInputElement).value;
-                            adminTempleCode = (document.getElementById('regAdminTempleCode') as HTMLInputElement).value;
-                            if (!adminCity || !adminTempleName || !adminTempleCode) return alert("Please fill all Temple Details.");
-                          }
-
-                          if (!name || !email || !pwd || !pwdConfirm) return alert("Please fill in all fields.");
-                          if (pwd !== pwdConfirm) return alert("Passwords do not match!");
-                          
+                          if (!name || !email || !pwd) return alert("Please fill all fields.");
                           try {
-                            const { error } = await supabase.auth.signUp({
-                              email,
-                              password: pwd,
-                              options: { data: { name } }
-                            });
+                            const { data, error } = await supabase.auth.signUp({ email, password: pwd, options: { data: { name, role } } });
                             if (error) throw error;
                             
-                            if (registerRole === 'admin') {
-                              const { data: loginData, error: loginErr } = await supabase.auth.signInWithPassword({ email, password: pwd });
-                              if (loginErr || !loginData.session) throw new Error("Registration succeeded, but auto-login failed. Please try logging in manually.");
-                              
-                              const token = loginData.session.access_token;
-                              await axios.post(`${API_URL}/admin/register-temple`, {
-                                city: adminCity,
-                                temple_name: adminTempleName,
-                                temple_code: adminTempleCode,
-                                name
-                              }, {
-                                headers: { Authorization: `Bearer ${token}` }
-                              });
-                              
-                              localStorage.setItem('token', token);
-                              alert("Temple Admin Registered Successfully!");
-                              window.location.reload();
+                            const { data: signInData, error: signInErr } = await supabase.auth.signInWithPassword({ email, password: pwd });
+                            if (signInErr) throw signInErr;
+                            localStorage.setItem('token', signInData.session?.access_token || '');
+                            
+                            if (role === 'admin') {
+                              alert("Registered successfully! Please complete Temple Admin registration on the Admin Tab.");
+                              setActiveTab('admin');
                             } else {
-                              alert("Registered successfully! Please login.");
-                              setAuthMode('login');
+                              alert("Devotee Registration Successful! You can now book tickets.");
+                              window.location.reload();
                             }
-                          } catch (e: any) { alert("Registration Failed: " + (e.response?.data?.detail || e.message || "Error")); }
+                          } catch(e: any) { alert("Registration Failed: " + (e.message)); }
                         }}
-                        className="w-full mt-2 bg-gray-900 hover:bg-black text-white font-bold py-4 rounded-xl shadow-lg transition-all active:scale-[0.98]"
-                      >Create Account</button>
+                        className="bg-gray-900 hover:bg-black text-white font-bold py-4 rounded-xl shadow-md transition-all active:scale-95 mt-2"
+                      >
+                        Create Account
+                      </button>
                       
                       <p className="mt-4 text-sm text-gray-600">
-                        Already have an account?{' '}
-                        <button onClick={() => setAuthMode('login')} className="text-orange-600 font-bold hover:underline">Login here</button>
+                        Already have an account? <button onClick={() => setAuthMode('login')} className="text-orange-600 font-bold hover:underline">Login here</button>
                       </p>
                     </div>
                   )}
                 </div>
+                </>
               ) : (
-                <div className="w-full">
-                  {!showBookingForm ? (
-                    <div className="bg-white/95 backdrop-blur-xl p-6 md:p-8 rounded-2xl md:rounded-3xl shadow-xl border border-white/40 relative overflow-hidden animate-in fade-in zoom-in-95 duration-500">
-                      <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-orange-400 to-orange-600"></div>
-                      <div className="flex justify-between items-start mb-6 md:mb-8">
+                <div className="w-full flex flex-col md:flex-row gap-8">
+                  
+                  {/* Left Column: Dashboard Sidebar */}
+                  <div className="w-full md:w-1/3 flex flex-col gap-6">
+                    <div className="bg-gradient-to-br from-orange-500 to-orange-600 p-6 rounded-2xl shadow-lg text-white">
+                      <div className="flex justify-between items-start mb-6">
                         <div>
-                          <h3 className="text-2xl md:text-3xl font-black text-gray-900 tracking-tight">Welcome, {userDashboard?.user?.name || 'Devotee'}</h3>
-                          <p className="text-gray-500 font-medium mt-1">{userDashboard?.user?.email}</p>
+                          <h3 className="text-2xl font-black tracking-tight">{userDashboard?.user?.name || 'Devotee'}</h3>
+                          <p className="text-orange-100 font-medium text-sm mt-1">{userDashboard?.user?.email}</p>
                         </div>
-                        <button onClick={() => { localStorage.removeItem('token'); window.location.reload(); }} className="text-sm font-bold text-gray-400 hover:text-red-500 transition-colors">Logout</button>
+                        <button onClick={() => { localStorage.removeItem('token'); window.location.reload(); }} className="text-xs font-bold text-orange-200 hover:text-white bg-orange-700/30 px-3 py-1.5 rounded-full transition-colors">Logout</button>
                       </div>
-
-                      <div className="grid grid-cols-2 gap-4 mb-8">
-                        <div className="bg-orange-50 p-5 rounded-2xl border border-orange-100 flex flex-col justify-center">
-                          <div className="text-4xl font-black text-orange-600 mb-1">{userDashboard?.bookings?.length || 0}</div>
-                          <div className="text-xs font-bold text-orange-900/70 uppercase tracking-wider">Total Darshans</div>
-                        </div>
-                        <button 
-                          onClick={() => setShowBookingForm(true)}
-                          className="bg-gradient-to-br from-gray-900 to-black hover:from-black hover:to-gray-900 text-white p-5 rounded-2xl flex flex-col items-center justify-center gap-2 shadow-lg transition-transform active:scale-95 border border-gray-800"
-                        >
-                          <CalendarCheck className="w-8 h-8 text-orange-500" />
-                          <span className="font-bold">Book New Slot</span>
-                        </button>
+                      <div className="bg-white/20 p-4 rounded-xl backdrop-blur-sm border border-white/20">
+                        <div className="text-3xl font-black mb-1">{userDashboard?.bookings?.length || 0}</div>
+                        <div className="text-[11px] font-bold text-orange-100 uppercase tracking-widest">Total Darshans</div>
                       </div>
+                    </div>
 
+                    <div className="bg-gray-50 p-5 rounded-2xl border border-gray-200">
                       <h4 className="font-bold text-gray-900 mb-4 flex items-center gap-2"><Clock className="w-5 h-5 text-gray-400"/> Recent Bookings</h4>
-                      <div className="flex flex-col gap-3 max-h-60 overflow-y-auto pr-2">
+                      <div className="flex flex-col gap-3 max-h-[400px] overflow-y-auto pr-2">
                         {(!userDashboard?.bookings || userDashboard.bookings.length === 0) ? (
-                          <div className="text-center p-8 bg-gray-50 rounded-2xl border border-dashed border-gray-200 text-gray-500">
-                            <div className="font-bold text-gray-700 mb-1">No past bookings</div>
-                            <div className="text-sm">Click 'Book New Slot' to get started!</div>
+                          <div className="text-center p-6 bg-white rounded-xl border border-dashed border-gray-200 text-gray-400">
+                            <div className="text-sm font-medium">No past bookings found</div>
                           </div>
                         ) : (
                           userDashboard.bookings.map((b: any, i: number) => (
-                            <div key={i} className="flex items-center justify-between p-4 bg-white rounded-xl border border-gray-100 shadow-sm hover:border-orange-200 transition-colors">
-                              <div>
-                                <div className="font-bold text-gray-900">{b.temple_name}</div>
-                                <div className="text-xs font-medium text-gray-500 mt-1">{b.date} • {b.start_time.substring(0,5)} - {b.end_time.substring(0,5)}</div>
-                              </div>
-                              <div className="text-right">
-                                <div className="font-black text-orange-600 bg-orange-50 px-3 py-1 rounded-lg inline-block">{b.token}</div>
-                                <div className="text-[10px] font-bold text-gray-400 uppercase mt-2">{b.status}</div>
+                            <div key={i} className="flex flex-col p-3 bg-white rounded-xl border border-gray-100 shadow-sm">
+                              <div className="font-bold text-gray-800 text-sm mb-1 truncate">{b.temple_name}</div>
+                              <div className="flex justify-between items-center mt-1">
+                                <div className="text-[11px] font-medium text-gray-500">{b.date} - {b.start_time.substring(0,5)}</div>
+                                <div className="text-[10px] font-black text-orange-600 bg-orange-50 px-2 py-1 rounded">{b.token}</div>
                               </div>
                             </div>
-                          )).reverse()
+                          ))
                         )}
                       </div>
                     </div>
-                  ) : (
-                    <div className="bg-white/95 backdrop-blur-xl p-6 md:p-8 rounded-2xl md:rounded-3xl shadow-xl border border-white/40 relative animate-in fade-in slide-in-from-bottom-4 duration-500">
-                      <div className="flex justify-between items-center mb-6 pb-6 border-b border-gray-100">
-                        <h3 className="text-xl font-black text-gray-900">Book New Slot</h3>
-                        <button onClick={() => setShowBookingForm(false)} className="text-sm font-bold text-gray-500 hover:text-gray-900 bg-gray-100 hover:bg-gray-200 px-4 py-2 rounded-full transition-colors">&larr; Back to Profile</button>
+                  </div>
+
+                  {/* Right Column: Booking Interface */}
+                  <div className="w-full md:w-2/3 flex flex-col">
+                    {!showBookingForm ? (
+                      <div className="flex-1 flex flex-col items-center justify-center bg-gray-50 border border-gray-200 rounded-2xl p-8 text-center min-h-[400px]">
+                        <CalendarCheck className="w-16 h-16 text-gray-300 mb-4" />
+                        <h3 className="text-2xl font-black text-gray-800 mb-2">Ready for Darshan?</h3>
+                        <p className="text-gray-500 max-w-md mb-8">Search for a temple, pick a date, and secure your digital queue ticket in seconds.</p>
+                        <button 
+                          onClick={() => setShowBookingForm(true)}
+                          className="bg-gray-900 hover:bg-black text-white px-8 py-4 rounded-xl shadow-lg transition-transform active:scale-95 font-bold flex items-center gap-3"
+                        >
+                          Book New Slot <Menu className="w-5 h-5 opacity-50" />
+                        </button>
                       </div>
-                      <div className="mb-5">
-                  <label className="block text-sm font-semibold mb-2 text-gray-700">Select Temple</label>
-                  <select 
-                    className="w-full border p-3 rounded-lg bg-gray-50 focus:bg-white focus:ring-2 focus:ring-orange-500 outline-none transition" 
-                    value={selectedTemple}
-                    onChange={(e) => setSelectedTemple(e.target.value)}
-                  >
-                    {temples.map((t: any) => (
-                      <option key={t.id} value={t.id}>{t.name}, {t.city}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="mb-6">
-                  <label className="block text-sm font-semibold mb-2 text-gray-700">Select Date</label>
-                  <input 
-                    type="date" 
-                    className="w-full border p-3 rounded-lg bg-gray-50 focus:bg-white focus:ring-2 focus:ring-orange-500 outline-none transition" 
-                    value={selectedDate}
-                    onChange={(e) => setSelectedDate(e.target.value)}
-                  />
-                </div>
-                
-                <label className="block text-sm font-semibold mb-2 text-gray-700">Available Slots</label>
-                <div className="grid grid-cols-2 gap-3 mb-6">
-                  {slots.length === 0 ? (
-                    <div className="col-span-2 text-gray-500 text-sm p-4 bg-gray-50 rounded-lg text-center border border-dashed">No slots found for this date.</div>
-                  ) : (
-                    slots.map(slot => (
-                      <button 
-                        key={slot.id}
-                        onClick={() => {
-                          if (slot.availability > 0) setSelectedSlot(slot.id);
-                        }}
-                        disabled={slot.availability <= 0}
-                        className={`p-3 rounded-lg border-2 transition text-left relative overflow-hidden ${
-                          slot.availability <= 0 
-                            ? 'border-gray-200 bg-gray-50 text-gray-400 cursor-not-allowed'
-                            : selectedSlot === slot.id 
-                              ? 'border-orange-500 bg-orange-50 text-orange-800 shadow-sm'
-                              : 'border-gray-200 text-gray-700 hover:border-orange-300 hover:bg-orange-50/50'
-                        }`}
-                      >
-                        <div className="font-semibold">{formatTime(slot.start_time)} - {formatTime(slot.end_time)}</div>
-                        <div className={`text-xs mt-1 font-medium ${slot.availability <= 0 ? 'text-red-500' : 'text-green-600'}`}>
-                          {slot.availability <= 0 ? 'FULLY BOOKED' : `${slot.availability} spots remaining`}
-                        </div>
-                        {selectedSlot === slot.id && (
-                          <div className="absolute right-3 top-1/2 -translate-y-1/2 w-3 h-3 bg-orange-500 rounded-full"></div>
-                        )}
-                      </button>
-                    ))
-                  )}
-                </div>
-
-                <div className="bg-gray-50/80 border p-5 rounded-2xl mb-8 flex flex-col gap-4">
-                  <label className="flex items-start gap-4 cursor-pointer group">
-                    <input type="checkbox" className="w-5 h-5 accent-orange-600 rounded mt-1" checked={isPriority} onChange={e => setIsPriority(e.target.checked)} />
-                    <div>
-                      <div className="font-bold text-gray-800 group-hover:text-orange-700 transition-colors">Senior Citizen / Divyang (Priority)</div>
-                      <div className="text-sm text-gray-500 mt-0.5">Expedites queue progression automatically</div>
-                    </div>
-                  </label>
-                  <div className="h-px w-full bg-gray-200/60"></div>
-                  <label className="flex items-start gap-4 cursor-pointer group">
-                    <input type="checkbox" className="w-5 h-5 accent-green-600 rounded mt-1" checked={notifyWhatsApp} onChange={e => setNotifyWhatsApp(e.target.checked)} />
-                    <div>
-                      <div className="font-bold text-green-800 flex items-center gap-1.5 group-hover:text-green-900 transition-colors">
-                        Enable WhatsApp Alerts <Bell className="w-4 h-4"/>
-                      </div>
-                      <div className="text-sm text-gray-500 mt-0.5">Get notified 15 mins before your expected darshan time</div>
-                    </div>
-                  </label>
-                </div>
-
-                <button 
-                  onClick={handleBooking}
-                  className="w-full bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-700 hover:to-orange-600 text-white py-5 rounded-xl font-black text-xl shadow-[0_8px_30px_rgb(234,88,12,0.3)] transition-all active:scale-[0.98] active:shadow-sm"
-                >
-                  Confirm Booking Request
-                </button>
-                
-                {bookingMessage && (
-                  <div className={`mt-8 p-8 rounded-2xl flex flex-col items-center text-center shadow-lg relative overflow-hidden ${bookingMessage.includes('Success') ? 'bg-green-50 border-2 border-green-500 text-green-800' : 'bg-red-50 text-red-800 border-2 border-red-200'}`}>
-                    {bookingMessage.includes('Success') && <div className="absolute top-0 left-0 w-full h-1 bg-green-500"></div>}
-                    {bookingMessage.includes('Success') ? (
-                      <>
-                        <h3 className="text-2xl font-black mb-2 text-green-900">Booking Confirmed!</h3>
-                        <p className="mb-6 font-medium text-green-700">Your digital e-Token has been generated.</p>
-                        <div className="bg-white p-6 inline-block rounded-2xl shadow-sm border border-green-100">
-                          <QRCodeSVG value={`${window.location.origin}?ticket=${bookedToken}`} size={180} level="H" includeMargin={true} fgColor="#064e3b" />
-                        </div>
-                        <p className="text-sm text-gray-600 mt-6 flex justify-center items-center gap-2 font-bold"><QrCode className="w-5 h-5"/> Show this QR at the smart entrance gate</p>
-                        {notifyWhatsApp && <p className="text-sm font-black text-green-700 mt-3">✓ WhatsApp alerts enabled for +91 ********</p>}
-                      </>
                     ) : (
-                      <span className="font-bold text-lg">{bookingMessage}</span>
-                    )}
-                  </div>
-                )}
+                      <div className="flex-1 flex flex-col animate-in slide-in-from-right-8 duration-500">
+                        
+                        {ticketViewToken ? (
+                          <div className="bg-white border-2 border-orange-500 rounded-2xl p-6 md:p-8 shadow-2xl relative overflow-hidden text-center animate-in zoom-in-95 duration-500">
+                            <div className="absolute top-0 right-0 bg-green-500 text-white text-[10px] font-black px-4 py-1 rounded-bl-lg uppercase tracking-wider flex items-center gap-1">
+                              <CheckCircle2 className="w-3 h-3" /> Confirmed
+                            </div>
+                            
+                            <h3 className="text-2xl font-black text-gray-900 mb-2 mt-4">Booking Successful!</h3>
+                            <p className="text-gray-500 text-sm mb-8">Please present this QR code at the temple entry gate.</p>
+                            
+                            <div className="bg-gray-50 rounded-2xl p-6 md:p-8 border border-gray-200 inline-block mb-8 shadow-inner relative">
+                              <div className="absolute -left-3 top-1/2 w-6 h-6 bg-white rounded-full border border-gray-200"></div>
+                              <div className="absolute -right-3 top-1/2 w-6 h-6 bg-white rounded-full border border-gray-200"></div>
+                              <QRCodeSVG value={ticketViewToken} size={160} level="H" includeMargin={false} />
+                              <div className="mt-6 text-3xl font-black text-orange-600 tracking-widest">{ticketViewToken}</div>
+                              <div className="text-[10px] font-bold text-gray-400 uppercase mt-1">E-Ticket Token</div>
+                            </div>
+                            
+                            <div className="flex gap-4">
+                              <button onClick={() => {setTicketViewToken(''); setShowBookingForm(false);}} className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-800 font-bold py-3 rounded-xl transition">Back to Dashboard</button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="bg-white flex flex-col h-full">
+                            <div className="flex justify-between items-center mb-6">
+                              <h3 className="text-2xl font-black text-gray-900 flex items-center gap-2">
+                                <CalendarCheck className="w-6 h-6 text-orange-500" /> New Booking
+                              </h3>
+                              <button onClick={() => setShowBookingForm(false)} className="text-gray-400 hover:text-gray-900 transition bg-gray-100 hover:bg-gray-200 p-2 rounded-full">
+                                <X className="w-5 h-5" />
+                              </button>
+                            </div>
 
-                {/* NEW: Multi-Camera Re-ID Journey Tracking */}
-                {queueStatus.cv_alerts && queueStatus.cv_alerts.cameras && queueStatus.cv_alerts.cameras.length > 0 && (
-                  <div className="mt-8 border-2 border-gray-200 p-6 rounded-2xl bg-white shadow-sm">
-                    <div className="flex justify-between items-center mb-6">
-                      <h3 className="font-black text-xl text-gray-900 flex items-center gap-3">
-                        <Camera className="w-6 h-6 text-gray-500" />
-                        Multi-Camera Re-ID Pipeline (ByteTrack)
-                      </h3>
-                      <div className="flex items-center gap-2 text-xs font-bold bg-green-50 text-green-700 px-3 py-1 rounded-full border border-green-200">
-                        <span className="w-2 h-2 rounded-full bg-green-500 animate-ping"></span> Live Tracking Active
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-                      {queueStatus.cv_alerts.cameras.map((cam: any, i: number) => (
-                        <div key={i} className="bg-gray-50 border border-gray-200 rounded-xl p-4 text-center shadow-inner relative overflow-hidden">
-                          <div className="absolute top-0 right-0 bg-gray-200 text-gray-500 text-[9px] font-black px-2 py-1 rounded-bl-lg">{cam.camera_id}</div>
-                          <div className="text-xs font-bold text-gray-500 uppercase tracking-widest mt-2 mb-1">{cam.zone_name}</div>
-                          <div className="text-3xl font-black text-gray-800">{cam.crowd_count}</div>
-                          <div className="text-[10px] font-semibold text-gray-400 uppercase">Detects</div>
-                        </div>
-                      ))}
-                    </div>
-
-                    {queueStatus.cv_alerts.reid_matches && queueStatus.cv_alerts.reid_matches.length > 0 && (
-                      <div className="bg-gray-900 text-white p-5 rounded-xl border border-black shadow-lg">
-                        <h4 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-4">Cross-Camera Matches (Devotee Journey)</h4>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-                          {queueStatus.cv_alerts.reid_matches.map((match: any, idx: number) => (
-                            <div key={idx} className="bg-gray-800 border border-gray-700 p-3 rounded-lg flex justify-between items-center">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
                               <div>
-                                <div className="text-xs font-bold text-blue-400">{match.person_id}</div>
-                                <div className="text-xs text-gray-300">Seen at: {match.current_zone}</div>
+                                <label className="block text-sm font-semibold mb-2 text-gray-700">Filter by City</label>
+                                <select 
+                                  className="w-full border p-3.5 rounded-xl bg-gray-50 focus:bg-white focus:ring-2 focus:ring-orange-500 outline-none transition appearance-none"
+                                  value={selectedCity}
+                                  onChange={(e) => { setSelectedCity(e.target.value); setSelectedTemple(''); setSelectedSlot(''); }}
+                                >
+                                  {['All Cities', ...Array.from(new Set(temples.map((t: any) => t.city)))].map((city: any, i: number) => (
+                                    <option key={i} value={city}>{city}</option>
+                                  ))}
+                                </select>
                               </div>
-                              <div className="text-right">
-                                <div className="text-lg font-black text-white">{match.journey_time_mins}m</div>
-                                <div className="text-[10px] text-gray-500 uppercase font-bold">Elapsed</div>
+                              <div>
+                                <label className="block text-sm font-semibold mb-2 text-gray-700">Search Temple</label>
+                                <input 
+                                  placeholder="e.g. Kedarnath..."
+                                  className="w-full border p-3.5 rounded-xl bg-gray-50 focus:bg-white focus:ring-2 focus:ring-orange-500 outline-none transition"
+                                  value={searchQuery}
+                                  onChange={(e) => { setSearchQuery(e.target.value); setSelectedTemple(''); setSelectedSlot(''); }}
+                                />
                               </div>
                             </div>
-                          ))}
-                        </div>
+
+                            <div className="mb-6">
+                              <label className="block text-sm font-semibold mb-2 text-gray-700">Select Temple</label>
+                              <select 
+                                className="w-full border p-3.5 rounded-xl bg-gray-50 focus:bg-white focus:ring-2 focus:ring-orange-500 outline-none transition appearance-none" 
+                                value={selectedTemple}
+                                onChange={(e) => { setSelectedTemple(e.target.value); setSelectedSlot(''); }}
+                              >
+                                <option value="">-- Choose a Temple --</option>
+                                {temples.filter((t: any) => (selectedCity === 'All Cities' || t.city === selectedCity) && t.name.toLowerCase().includes(searchQuery.toLowerCase())).map((t: any) => (
+                                  <option key={t.id} value={t.id}>{t.name} ({t.city})</option>
+                                ))}
+                              </select>
+                            </div>
+
+                            <div className="mb-6">
+                              <label className="block text-sm font-semibold mb-2 text-gray-700">Select Date</label>
+                              <input 
+                                type="date" 
+                                className="w-full border p-3.5 rounded-xl bg-gray-50 focus:bg-white focus:ring-2 focus:ring-orange-500 outline-none transition" 
+                                value={selectedDate}
+                                onChange={(e) => setSelectedDate(e.target.value)}
+                              />
+                            </div>
+                            
+                            <label className="block text-sm font-semibold mb-2 text-gray-700">Available Slots</label>
+                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6 max-h-[250px] overflow-y-auto pr-2 pb-2">
+                              {isLoadingSlots ? (
+                                <div className="col-span-2 sm:col-span-3 text-center p-8 bg-gray-50 rounded-xl border border-dashed border-gray-200">
+                                  <div className="w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
+                                  <div className="text-gray-500 text-sm font-medium">Fetching live availability...</div>
+                                </div>
+                              ) : slots.length === 0 ? (
+                                <div className="col-span-2 sm:col-span-3 text-gray-500 text-sm p-6 bg-gray-50 rounded-xl text-center border border-dashed border-gray-200 font-medium">No slots found for this date. Please try another date.</div>
+                              ) : (
+                                slots.map(slot => (
+                                  <button 
+                                    key={slot.id}
+                                    onClick={() => {
+                                      if (slot.current_count < slot.max_capacity) setSelectedSlot(slot.id);
+                                    }}
+                                    disabled={slot.current_count >= slot.max_capacity}
+                                    className={`p-3 rounded-xl border text-sm font-bold flex flex-col justify-center items-center gap-1 transition-all
+                                      ${slot.current_count >= slot.max_capacity 
+                                        ? 'bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed opacity-70' 
+                                        : selectedSlot === slot.id 
+                                          ? 'bg-orange-600 border-orange-600 text-white shadow-md transform scale-[1.02]' 
+                                          : 'bg-white border-gray-200 text-gray-700 hover:border-orange-300 hover:shadow-sm'}`}
+                                  >
+                                    <span>{slot.start_time.substring(0,5)} - {slot.end_time.substring(0,5)}</span>
+                                    <span className={`text-[10px] uppercase tracking-wider ${slot.current_count >= slot.max_capacity ? 'text-red-500' : selectedSlot === slot.id ? 'text-orange-200' : 'text-green-600'}`}>
+                                      {slot.current_count >= slot.max_capacity ? 'Fully Booked' : `${slot.max_capacity - slot.current_count} Left`}
+                                    </span>
+                                  </button>
+                                ))
+                              )}
+                            </div>
+
+                            <button 
+                              onClick={handleBooking}
+                              disabled={!selectedSlot}
+                              className={`w-full py-4 rounded-xl font-bold shadow-lg transition-all mt-auto
+                                ${!selectedSlot ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-gray-900 hover:bg-black text-white active:scale-95'}`}
+                            >
+                              Confirm Booking
+                            </button>
+                            {bookingMessage && <p className="text-red-500 text-center text-sm font-bold mt-4">{bookingMessage}</p>}
+                          </div>
+                        )}
+
                       </div>
                     )}
                   </div>
-                )}
-
-              </div>
-            )}
+                </div>
+              )}
             </div>
-          )}
-          </div>
-        </section>
-      )}
-
-        {activeTab === 'staff' && (
+          </section>
+        )}
+{activeTab === 'staff' && (
           <section className="bg-white p-8 rounded-xl shadow-sm border border-gray-100 flex flex-col gap-8 max-w-4xl mx-auto">
             {!localStorage.getItem('token') ? (
               <div className="flex flex-col gap-4 text-center items-center py-12">
