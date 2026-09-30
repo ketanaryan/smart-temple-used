@@ -615,19 +615,19 @@ function App() {
                                   <button 
                                     key={slot.id}
                                     onClick={() => {
-                                      if (slot.current_count < slot.max_capacity) setSelectedSlot(slot.id);
+                                      if (slot.booked_count < slot.max_capacity) setSelectedSlot(slot.id);
                                     }}
-                                    disabled={slot.current_count >= slot.max_capacity}
+                                    disabled={slot.booked_count >= slot.max_capacity}
                                     className={`p-3 rounded-xl border text-sm font-bold flex flex-col justify-center items-center gap-1 transition-all
-                                      ${slot.current_count >= slot.max_capacity 
+                                      ${slot.booked_count >= slot.max_capacity 
                                         ? 'bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed opacity-70' 
                                         : selectedSlot === slot.id 
                                           ? 'bg-orange-600 border-orange-600 text-white shadow-md transform scale-[1.02]' 
                                           : 'bg-white border-gray-200 text-gray-700 hover:border-orange-300 hover:shadow-sm'}`}
                                   >
                                     <span>{slot.start_time.substring(0,5)} - {slot.end_time.substring(0,5)}</span>
-                                    <span className={`text-[10px] uppercase tracking-wider ${slot.current_count >= slot.max_capacity ? 'text-red-500' : selectedSlot === slot.id ? 'text-orange-200' : 'text-green-600'}`}>
-                                      {slot.current_count >= slot.max_capacity ? 'Fully Booked' : `${slot.max_capacity - slot.current_count} Left`}
+                                    <span className={`text-[10px] uppercase tracking-wider ${slot.booked_count >= slot.max_capacity ? 'text-red-500' : selectedSlot === slot.id ? 'text-orange-200' : 'text-green-600'}`}>
+                                      {slot.booked_count >= slot.max_capacity ? 'Fully Booked' : `${slot.max_capacity - slot.booked_count} Left`}
                                     </span>
                                   </button>
                                 ))
