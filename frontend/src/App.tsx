@@ -102,6 +102,7 @@ function App() {
   };
 
   const [adminCodes, setAdminCodes] = useState<any[]>([]);
+  const [adminBookings, setAdminBookings] = useState<any[]>([]);
 
   const fetchAdminCodes = async () => {
     const token = localStorage.getItem('token');
@@ -521,7 +522,7 @@ function App() {
                     ) : (
                       <div className="flex-1 flex flex-col animate-in slide-in-from-right-8 duration-500">
                         
-                        {ticketViewToken ? (
+                        {ticketViewToken || bookedToken ? (
                           <div className="bg-white border-2 border-orange-500 rounded-2xl p-6 md:p-8 shadow-2xl relative overflow-hidden text-center animate-in zoom-in-95 duration-500">
                             <div className="absolute top-0 right-0 bg-green-500 text-white text-[10px] font-black px-4 py-1 rounded-bl-lg uppercase tracking-wider flex items-center gap-1">
                               <CheckCircle2 className="w-3 h-3" /> Confirmed
@@ -533,13 +534,13 @@ function App() {
                             <div className="bg-gray-50 rounded-2xl p-6 md:p-8 border border-gray-200 inline-block mb-8 shadow-inner relative">
                               <div className="absolute -left-3 top-1/2 w-6 h-6 bg-white rounded-full border border-gray-200"></div>
                               <div className="absolute -right-3 top-1/2 w-6 h-6 bg-white rounded-full border border-gray-200"></div>
-                              <QRCodeSVG value={ticketViewToken} size={160} level="H" includeMargin={false} />
-                              <div className="mt-6 text-3xl font-black text-orange-600 tracking-widest">{ticketViewToken}</div>
+                              <QRCodeSVG value={ticketViewToken || bookedToken} size={160} level="H" includeMargin={false} />
+                              <div className="mt-6 text-3xl font-black text-orange-600 tracking-widest">{ticketViewToken || bookedToken}</div>
                               <div className="text-[10px] font-bold text-gray-400 uppercase mt-1">E-Ticket Token</div>
                             </div>
                             
                             <div className="flex gap-4">
-                              <button onClick={() => {setTicketViewToken(''); setShowBookingForm(false);}} className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-800 font-bold py-3 rounded-xl transition">Back to Dashboard</button>
+                              <button onClick={() => {setTicketViewToken(''); setBookedToken(''); setShowBookingForm(false);}} className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-800 font-bold py-3 rounded-xl transition">Back to Dashboard</button>
                             </div>
                           </div>
                         ) : (
