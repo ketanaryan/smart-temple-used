@@ -65,28 +65,7 @@ try:
                 raise credentials_exception
             email = user_res.user.email
             name = user_res.user.user_metadata.get('name', 'Supabase User') if user_res.user.user_metadata else 'Supabase User'
-    
-    @app.get("/admin/temples/{temple_id}/bookings")
-    def get_temple_bookings(temple_id: int, db: Session = Depends(get_db)):
-        # Join TimeSlot to filter by temple_id
-        bookings = db.query(models.Booking).join(models.TimeSlot).filter(
-            models.TimeSlot.temple_id == temple_id
-        ).order_by(models.Booking.booking_time.desc()).limit(50).all()
-        
-        results = []
-        for b in bookings:
-            slot = db.query(models.TimeSlot).filter(models.TimeSlot.id == b.slot_id).first()
-            results.append({
-                "id": b.id,
-                "token_number": b.token_number,
-                "status": b.status,
-                "is_online": b.is_online,
-                "date": str(slot.date) if slot else "",
-                "start_time": str(slot.start_time) if slot else ""
-            })
-        return results
-
-    except Exception as e:
+        except Exception as e:
             print(f"Token verification error: {e}")
             raise credentials_exception
             
@@ -359,11 +338,114 @@ try:
             }
         return {"message": "No devotees in queue", "called_token": None}
 
-
 except Exception as e:
     error_msg = traceback.format_exc()
-    print("INITIALIZATION ERROR:")
-    print(error_msg)
     @app.get("/{path:path}")
     def catch_all(path: str):
         return {"error": "Failed to initialize server", "traceback": error_msg}
+
+
+@app.post('/admin/generate-code')
+def generate_temple_code(code_data: schemas.TempleCodeCreate, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    if current_user.email != 'mainadmin@smarttemple.com':
+        raise HTTPException(status_code=403, detail='Only Main Admin can generate codes')
+    import string, random
+    temple = db.query(models.Temple).filter(models.Temple.id == code_data.temple_id).first()
+    if not temple:
+        raise HTTPException(status_code=404, detail='Temple not found')
+    prefix = (temple.city[:3] if temple.city else 'TPL').upper()
+    random_str = ''.join(random.choices(string.ascii_uppercase + string.digits, k=4))
+    code_str = f"{prefix}-{random_str}"
+    db_code = models.TempleCode(code=code_str, created_by=current_user.id, temple_id=temple.id)
+    db.add(db_code)
+    try:
+        db.commit()
+    except:
+        db.rollback()
+        raise HTTPException(status_code=400, detail='Code already exists')
+    return {"code": code_str, "temple_id": temple.id}
+
+
+@app.post('/admin/register-temple')
+def register_temple_admin(data: schemas.TempleAdminRegister, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    code = db.query(models.TempleCode).filter(models.TempleCode.code == data.temple_code, models.TempleCode.is_used == False).first()
+    if not code:
+        raise HTTPException(status_code=400, detail='Invalid or already used Temple Code')
+    
+    code.is_used = True
+    
+    if code.temple_id:
+        temple = db.query(models.Temple).filter(models.Temple.id == code.temple_id).first()
+        if temple:
+            temple.admin_id = current_user.id
+            if data.temple_name: temple.name = data.temple_name
+            if data.city: temple.city = data.city
+    else:
+        new_temple = models.Temple(name=data.temple_name, city=data.city, admin_id=current_user.id)
+        db.add(new_temple)
+        
+    current_user.is_admin = True
+    db.commit()
+    return {'message': 'Temple Admin registered successfully'}
+
+
+
+@app.get('/users/me', response_model=schemas.User)
+def read_users_me(current_user: models.User = Depends(get_current_user)):
+    return current_user
+
+
+@app.get('/ticket/{token_number}')
+def get_ticket(token_number: str, db: Session = Depends(get_db)):
+    booking = db.query(models.Booking).filter(models.Booking.token_number == token_number).first()
+    if not booking:
+        raise HTTPException(status_code=404, detail='Ticket not found')
+    slot = db.query(models.TimeSlot).filter(models.TimeSlot.id == booking.slot_id).first()
+    temple = db.query(models.Temple).filter(models.Temple.id == slot.temple_id).first()
+    user = db.query(models.User).filter(models.User.id == booking.user_id).first() if booking.user_id else None
+    return {
+        'token': booking.token_number,
+        'status': booking.status,
+        'temple_name': temple.name,
+        'city': temple.city,
+        'date': slot.date,
+        'start_time': slot.start_time,
+        'end_time': slot.end_time,
+        'booking_time': booking.booking_time,
+        'user_name': user.name if user else 'Walk-in Devotee'
+    }
+
+@app.get('/admin/codes', response_model=List[schemas.TempleCodeResponse])
+def get_temple_codes(db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    if current_user.email != 'mainadmin@smarttemple.com':
+        raise HTTPException(status_code=403, detail='Only Main Admin can view codes')
+    codes = db.query(models.TempleCode).order_by(models.TempleCode.id.desc()).all()
+    results = []
+    for c in codes:
+        t = db.query(models.Temple).filter(models.Temple.id == c.temple_id).first() if c.temple_id else None
+        results.append({
+            "code": c.code,
+            "is_used": c.is_used,
+            "temple_id": c.temple_id,
+            "temple_name": t.name if t else None
+        })
+    return results
+
+@app.get('/admin/temples/{temple_id}/bookings')
+def get_temple_bookings(temple_id: int, db: Session = Depends(get_db)):
+    bookings = db.query(models.Booking).join(models.TimeSlot).filter(
+        models.TimeSlot.temple_id == temple_id
+    ).order_by(models.Booking.booking_time.desc()).limit(50).all()
+    
+    results = []
+    for b in bookings:
+        slot = db.query(models.TimeSlot).filter(models.TimeSlot.id == b.slot_id).first()
+        results.append({
+            'id': b.id,
+            'token_number': b.token_number,
+            'status': b.status,
+            'is_online': b.is_online,
+            'date': str(slot.date) if slot else '',
+            'start_time': str(slot.start_time) if slot else ''
+        })
+    return results
