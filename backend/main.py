@@ -449,3 +449,64 @@ def get_temple_bookings(temple_id: int, db: Session = Depends(get_db)):
             'start_time': str(slot.start_time) if slot else ''
         })
     return results
+
+
+# --- DYNAMIC SERVICES IN-MEMORY DB ---
+# For hackathon demo purposes, these are kept in-memory
+global_sos_alerts = []
+global_parking = {"total": 500, "booked": 320}
+global_donations = []
+global_lost_found = [
+    {"id": 1, "type": "child", "desc": "Boy, 5 yrs, red shirt", "status": "searching"},
+    {"id": 2, "type": "item", "desc": "Black wallet", "status": "found"}
+]
+
+from pydantic import BaseModel
+class SOSRequest(BaseModel):
+    user_name: str
+    location: str
+
+class DonationRequest(BaseModel):
+    user_name: str
+    amount: int
+
+class LostFoundRequest(BaseModel):
+    item_type: str
+    desc: str
+
+@app.post("/services/sos")
+def trigger_sos(req: SOSRequest):
+    global_sos_alerts.append(req.dict())
+    return {"message": "SOS Alert Sent to Security"}
+
+@app.get("/services/sos")
+def get_sos():
+    return global_sos_alerts
+
+@app.get("/services/parking")
+def get_parking():
+    return global_parking
+
+@app.post("/services/parking/book")
+def book_parking():
+    if global_parking["booked"] < global_parking["total"]:
+        global_parking["booked"] += 1
+        return {"success": True, "booked": global_parking["booked"]}
+    raise HTTPException(status_code=400, detail="Parking Full")
+
+@app.post("/services/donate")
+def make_donation(req: DonationRequest):
+    global_donations.append(req.dict())
+    return {"message": "Donation successful"}
+
+@app.get("/services/lostfound")
+def get_lostfound():
+    return global_lost_found
+
+@app.post("/services/lostfound")
+def report_lostfound(req: LostFoundRequest):
+    new_item = {"id": len(global_lost_found) + 1, "type": req.item_type, "desc": req.desc, "status": "searching"}
+    global_lost_found.insert(0, new_item)
+    return new_item
+# ------------------------------------
+

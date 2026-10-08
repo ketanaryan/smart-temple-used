@@ -24,6 +24,8 @@ function App() {
   const [notifyWhatsApp, setNotifyWhatsApp] = useState(true);
   const [currentToken, setCurrentToken] = useState('');
   
+  
+  const isHindi = localStorage.getItem('lang') === 'hi';
   const [activeTab, setActiveTab] = useState(localStorage.getItem('activeTab') || 'home'); // 'home' | 'devotee' | 'staff' | 'admin'
   const [isAdmin, setIsAdmin] = useState(localStorage.getItem('adminToken') === 'true');
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
@@ -33,6 +35,23 @@ function App() {
 
   const [ticketViewToken] = useState<string | null>(new URLSearchParams(window.location.search).get('ticket'));
   const [ticketData, setTicketData] = useState<any>(null);
+  const [activeServiceModal, setActiveServiceModal] = useState<string | null>(null);
+  const [sosSent, setSosSent] = useState(false);
+  const [donateAmount, setDonateAmount] = useState('');
+  const [lostFoundData, setLostFoundData] = useState<any[]>([]);
+  const [parkingData, setParkingData] = useState<any>(null);
+  const [lfType, setLfType] = useState('child');
+  const [lfDesc, setLfDesc] = useState('');
+  
+  const fetchServices = async () => {
+    try {
+      const pRes = await axios.get(`${API_URL}/services/parking`);
+      setParkingData(pRes.data);
+      const lfRes = await axios.get(`${API_URL}/services/lostfound`);
+      setLostFoundData(lfRes.data);
+    } catch(e) {}
+  };
+
   const [ticketError, setTicketError] = useState('');
 
   useEffect(() => {
@@ -383,7 +402,7 @@ function App() {
                   <div className="inline-flex bg-orange-100 p-2 md:p-3 rounded-full mb-3 md:mb-4">
                     <CalendarCheck className="w-6 h-6 md:w-8 md:h-8 text-orange-600" />
                   </div>
-                  <h2 className="text-2xl md:text-3xl font-black text-gray-900 tracking-tight">Book your Darshan</h2>
+                  <h2 className="text-2xl md:text-3xl font-black text-gray-900 tracking-tight">{isHindi ? "???? ????? ??? ????" : "Book your Darshan"}</h2>
                   <p className="text-gray-500 font-medium mt-2">Secure your digital token for a peaceful visit.</p>
                 </div>
                 <div className="bg-orange-50/80 p-5 md:p-8 rounded-xl md:rounded-2xl border border-orange-100/50 mb-6 text-center shadow-inner relative overflow-hidden transition-all duration-300">
@@ -512,7 +531,7 @@ function App() {
                       <div className="flex flex-col h-full bg-white rounded-2xl p-6 border border-gray-100 shadow-sm overflow-hidden">
                         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
                           <div>
-                            <h3 className="text-2xl font-black text-gray-900 tracking-tight">Select Temple</h3>
+                            <h3 className="text-2xl font-black text-gray-900 tracking-tight">{isHindi ? "????? ?????" : "Select Temple"}</h3>
                             <p className="text-sm font-medium text-gray-500">Choose your destination for Darshan</p>
                           </div>
                           <select 
