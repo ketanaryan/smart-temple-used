@@ -92,9 +92,8 @@ function App() {
     setLang(newLang);
   };
   const [activeTab, setActiveTab] = useState(localStorage.getItem('activeTab') || 'home'); // 'home' | 'devotee' | 'staff' | 'admin'
-  const [isAdmin, setIsAdmin] = useState(localStorage.getItem('adminToken') === 'true');
+  const [isAdmin, setIsAdmin] = useState(false);
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
-  const [registerRole, setRegisterRole] = useState<'devotee' | 'admin'>('devotee');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [staffSelectedTemple, setStaffSelectedTemple] = useState<number | null>(null);
 
@@ -420,8 +419,9 @@ function App() {
         headers: { Authorization: `Bearer ${token}` }
       });
       setUserDashboard(res.data);
-      setIsAdmin(res.data.user?.is_admin || false);
-      if (res.data.user?.is_admin && res.data.user?.email !== 'mainadmin@smarttemple.com' && res.data.user?.managed_temples?.length > 0) {
+      const isUserAdmin = Boolean(res.data.user?.is_admin);
+      setIsAdmin(isUserAdmin);
+      if (isUserAdmin && res.data.user?.email !== 'mainadmin@smarttemple.com' && res.data.user?.managed_temples?.length > 0) {
         setAdminTempleState(res.data.user.managed_temples[0].id);
         adminTempleIdRef.current = res.data.user.managed_temples[0].id;
       }
@@ -431,10 +431,19 @@ function App() {
     } catch (e) {
       console.error("Session expired or invalid", e);
       localStorage.removeItem('token');
+      localStorage.removeItem('adminToken');
+      setIsAdmin(false);
     } finally {
       setIsLoadingDashboard(false);
     }
   };
+
+  // Redirect non-admins away from the admin tab
+  useEffect(() => {
+    if (!isLoadingDashboard && !isAdmin && activeTab === 'admin') {
+      setActiveTab('devotee');
+    }
+  }, [isAdmin, activeTab, isLoadingDashboard]);
 
   // Synchronize admin donation settings whenever adminTempleState or temples changes
   useEffect(() => {
@@ -878,12 +887,14 @@ function App() {
             </button>
           </div>
 
-          <button 
-            onClick={() => { setActiveTab('admin'); setIsMobileMenuOpen(false); }}
-            className="bg-orange-500 hover:bg-orange-600 text-white px-5 py-2.5 md:py-2 rounded-lg transition-colors flex items-center justify-center gap-2 cursor-pointer w-full md:w-auto font-bold"
-          >
-            <ShieldCheck className="w-4 h-4" /> {isHindi ? "एडमिन पोर्टल" : "Admin Portal"}
-          </button>
+          {isAdmin && (
+            <button 
+              onClick={() => { setActiveTab('admin'); setIsMobileMenuOpen(false); }}
+              className="bg-orange-500 hover:bg-orange-600 text-white px-5 py-2.5 md:py-2 rounded-lg transition-colors flex items-center justify-center gap-2 cursor-pointer w-full md:w-auto font-bold animate-in fade-in"
+            >
+              <ShieldCheck className="w-4 h-4" /> {isHindi ? "एडमिन पोर्टल" : "Admin Portal"}
+            </button>
+          )}
         </div>
       </header>
 
@@ -967,60 +978,65 @@ function App() {
                           try {
                             const { data, error } = await supabase.auth.signInWithPassword({ email, password: pwd });
                             if (error) throw error;
-                            localStorage.setItem('token', data.session?.access_token || '');
+                            const token = data.session?.access_token || '';
+                            localStorage.setItem('token', token);
+
+                            // Detect role to route accurately
+                            try {
+                              const dashRes = await axios.get(`${API_URL}/users/me/dashboard`, {
+                                headers: { Authorization: `Bearer ${token}` }
+                              });
+                              if (dashRes.data.user?.is_admin) {
+                                localStorage.setItem('activeTab', 'admin');
+                              } else {
+                                localStorage.setItem('activeTab', 'devotee');
+                              }
+                            } catch {
+                              localStorage.setItem('activeTab', 'devotee');
+                            }
                             window.location.reload();
                           } catch(e: any) { alert("Login Failed: " + (e.message)); }
                         }}
                         className="bg-orange-600 hover:bg-orange-700 text-white font-bold py-4 rounded-xl shadow-md transition-all active:scale-95"
                       >
-                        Log In
+                        {isHindi ? "लॉग इन करें" : "Log In"}
                       </button>
                       <p className="mt-4 text-sm text-gray-600">
-                        Don't have an account? <button onClick={() => setAuthMode('register')} className="text-orange-600 font-bold hover:underline">Register here</button>
+                        {isHindi ? "खाता नहीं है?" : "Don't have an account?"} <button onClick={() => setAuthMode('register')} className="text-orange-600 font-bold hover:underline">{isHindi ? "यहाँ पंजीकरण करें" : "Register here"}</button>
                       </p>
                     </div>
                   ) : (
                     <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-right-4 duration-300">
-                      <input id="regName" placeholder="Full Name" className="p-4 border border-orange-200/50 rounded-xl bg-white shadow-sm focus:ring-2 focus:ring-orange-500 outline-none transition" />
-                      <input id="regEmail" type="email" placeholder="Email Address" className="p-4 border border-orange-200/50 rounded-xl bg-white shadow-sm focus:ring-2 focus:ring-orange-500 outline-none transition" />
-                      <input id="regPassword" type="password" placeholder="Password" className="p-4 border border-orange-200/50 rounded-xl bg-white shadow-sm focus:ring-2 focus:ring-orange-500 outline-none transition" />
-                      <select id="regRole" className="p-4 border border-orange-200/50 rounded-xl bg-white shadow-sm focus:ring-2 focus:ring-orange-500 outline-none transition text-gray-700 font-medium">
-                        <option value="devotee">Devotee (Book Darshan)</option>
-                        <option value="admin">Temple Admin</option>
-                      </select>
+                      <input id="regName" placeholder={isHindi ? "पूरा नाम" : "Full Name"} className="p-4 border border-orange-200/50 rounded-xl bg-white shadow-sm focus:ring-2 focus:ring-orange-500 outline-none transition" />
+                      <input id="regEmail" type="email" placeholder={isHindi ? "ईमेल पता" : "Email Address"} className="p-4 border border-orange-200/50 rounded-xl bg-white shadow-sm focus:ring-2 focus:ring-orange-500 outline-none transition" />
+                      <input id="regPassword" type="password" placeholder={isHindi ? "पासवर्ड" : "Password"} className="p-4 border border-orange-200/50 rounded-xl bg-white shadow-sm focus:ring-2 focus:ring-orange-500 outline-none transition" />
                       
                       <button 
                         onClick={async () => {
                           const name = (document.getElementById('regName') as HTMLInputElement).value;
                           const email = (document.getElementById('regEmail') as HTMLInputElement).value;
                           const pwd = (document.getElementById('regPassword') as HTMLInputElement).value;
-                          const role = (document.getElementById('regRole') as HTMLSelectElement).value;
                           
                           if (!name || !email || !pwd) return alert("Please fill all fields.");
                           try {
-                            const { data, error } = await supabase.auth.signUp({ email, password: pwd, options: { data: { name, role } } });
+                            const { data, error } = await supabase.auth.signUp({ email, password: pwd, options: { data: { name, role: 'devotee' } } });
                             if (error) throw error;
                             
                             const { data: signInData, error: signInErr } = await supabase.auth.signInWithPassword({ email, password: pwd });
                             if (signInErr) throw signInErr;
                             localStorage.setItem('token', signInData.session?.access_token || '');
-                            
-                            if (role === 'admin') {
-                              alert("Registered successfully! Please complete Temple Admin registration on the Admin Tab.");
-                              setActiveTab('admin');
-                            } else {
-                              alert("Devotee Registration Successful! You can now book tickets.");
-                              window.location.reload();
-                            }
+                            localStorage.setItem('activeTab', 'devotee');
+                            alert(isHindi ? "श्रद्धालु पंजीकरण सफल! अब आप दर्शन बुक कर सकते हैं।" : "Devotee Registration Successful! You can now book tickets.");
+                            window.location.reload();
                           } catch(e: any) { alert("Registration Failed: " + (e.message)); }
                         }}
                         className="bg-gray-900 hover:bg-black text-white font-bold py-4 rounded-xl shadow-md transition-all active:scale-95 mt-2"
                       >
-                        Create Account
+                        {isHindi ? "श्रद्धालु खाता बनाएं" : "Create Devotee Account"}
                       </button>
                       
                       <p className="mt-4 text-sm text-gray-600">
-                        Already have an account? <button onClick={() => setAuthMode('login')} className="text-orange-600 font-bold hover:underline">Login here</button>
+                        {isHindi ? "पहले से खाता है?" : "Already have an account?"} <button onClick={() => setAuthMode('login')} className="text-orange-600 font-bold hover:underline">{isHindi ? "लॉगिन करें" : "Login here"}</button>
                       </p>
                     </div>
                   )}
@@ -1037,7 +1053,13 @@ function App() {
                           <h3 className="text-2xl font-black tracking-tight">{userDashboard?.user?.name || 'Devotee'}</h3>
                           <p className="text-orange-100 font-medium text-sm mt-1">{userDashboard?.user?.email}</p>
                         </div>
-                        <button onClick={() => { localStorage.removeItem('token'); window.location.reload(); }} className="text-xs font-bold text-orange-200 hover:text-white bg-orange-700/30 px-3 py-1.5 rounded-full transition-colors">Logout</button>
+                        <button onClick={() => { 
+                          localStorage.removeItem('token'); 
+                          localStorage.removeItem('adminToken');
+                          localStorage.removeItem('activeTab');
+                          setIsAdmin(false);
+                          window.location.reload(); 
+                        }} className="text-xs font-bold text-orange-200 hover:text-white bg-orange-700/30 px-3 py-1.5 rounded-full transition-colors">{isHindi ? "लॉग आउट" : "Logout"}</button>
                       </div>
                       <div className="grid grid-cols-2 gap-2.5">
                         <div className="bg-white/20 p-3 rounded-xl backdrop-blur-sm border border-white/20">
@@ -1999,7 +2021,7 @@ function App() {
             )}
           </section>
         )}
-        {activeTab === 'admin' && (
+        {activeTab === 'admin' && isAdmin && (
           <section className="bg-white p-5 md:p-8 rounded-xl shadow-sm border border-gray-100 flex flex-col gap-6 md:gap-8 max-w-4xl mx-auto animate-in fade-in duration-300 w-[95%] md:w-full my-4 md:my-0">
             <div className="flex justify-between items-center border-b pb-4">
               <h2 className="text-xl md:text-2xl font-bold flex items-center gap-2 md:gap-3 text-orange-600">
@@ -2114,12 +2136,15 @@ function App() {
                     </button>
                     <button 
                       onClick={() => {
+                        localStorage.removeItem('token');
                         localStorage.removeItem('adminToken');
+                        localStorage.removeItem('activeTab');
                         setIsAdmin(false);
+                        window.location.reload();
                       }}
-                      className="text-xs text-gray-500 hover:text-gray-300 underline font-bold mt-2"
+                      className="text-xs text-gray-400 hover:text-white underline font-bold mt-2 cursor-pointer transition"
                     >
-                      Log out of Admin
+                      {isHindi ? "एडमिन से लॉग आउट करें" : "Log out of Admin Portal"}
                     </button>
                   </div>
                 </div>
