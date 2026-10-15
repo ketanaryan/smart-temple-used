@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Users, Clock, AlertTriangle, CalendarCheck, Bell, Cloud, Thermometer, ShieldCheck, CheckCircle2, QrCode, Menu, X, Camera } from 'lucide-react';
+import { Users, Clock, AlertTriangle, CalendarCheck, Bell, Cloud, Thermometer, ShieldCheck, CheckCircle2, QrCode, Menu, X, Camera, MapPin, Grid, Heart, Car, Search, Languages } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { supabase } from './supabaseClient';
 
@@ -402,7 +402,7 @@ function App() {
                   <div className="inline-flex bg-orange-100 p-2 md:p-3 rounded-full mb-3 md:mb-4">
                     <CalendarCheck className="w-6 h-6 md:w-8 md:h-8 text-orange-600" />
                   </div>
-                  <h2 className="text-2xl md:text-3xl font-black text-gray-900 tracking-tight">{isHindi ? "???? ????? ??? ????" : "Book your Darshan"}</h2>
+                  <h2 className="text-2xl md:text-3xl font-black text-gray-900 tracking-tight">{isHindi ? "अपना दर्शन बुक करें" : "Book your Darshan"}</h2>
                   <p className="text-gray-500 font-medium mt-2">Secure your digital token for a peaceful visit.</p>
                 </div>
                 <div className="bg-orange-50/80 p-5 md:p-8 rounded-xl md:rounded-2xl border border-orange-100/50 mb-6 text-center shadow-inner relative overflow-hidden transition-all duration-300">
@@ -514,7 +514,7 @@ function App() {
                             <div key={i} className="flex flex-col p-3 bg-white rounded-xl border border-gray-100 shadow-sm">
                               <div className="font-bold text-gray-800 text-sm mb-1 truncate">{b.temple_name}</div>
                               <div className="flex justify-between items-center mt-1">
-                                <div className="text-[11px] font-medium text-gray-500">{b.date} - {b.start_time.substring(0,5)}</div>
+                                <div className="text-[11px] font-medium text-gray-500">{b.date} - {b.start_time ? String(b.start_time).substring(0,5) : ""}</div>
                                 <div className="text-[10px] font-black text-orange-600 bg-orange-50 px-2 py-1 rounded">{b.token}</div>
                               </div>
                             </div>
@@ -522,6 +522,33 @@ function App() {
                         )}
                       </div>
                     </div>
+
+                    <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm mt-4">
+                      <h4 className="font-black text-gray-900 mb-3 flex items-center gap-2 text-xs uppercase tracking-wider"><Grid className="w-4 h-4 text-orange-500"/> Devotee Services</h4>
+                      <div className="grid grid-cols-2 gap-2.5">
+                        <button onClick={() => setActiveServiceModal('sos')} className="bg-red-50 text-red-600 p-2.5 rounded-xl font-bold flex flex-col items-center justify-center gap-1.5 hover:bg-red-100 transition border border-red-100 active:scale-95 text-xs">
+                          <AlertTriangle className="w-5 h-5"/>
+                          <span className="text-[10px] uppercase font-black tracking-wider">Emergency SOS</span>
+                        </button>
+                        <button onClick={() => { localStorage.setItem('lang', isHindi ? 'en' : 'hi'); window.location.reload(); }} className="bg-indigo-50 text-indigo-600 p-2.5 rounded-xl font-bold flex flex-col items-center justify-center gap-1.5 hover:bg-indigo-100 transition border border-indigo-100 active:scale-95 text-xs">
+                          <Languages className="w-5 h-5"/>
+                          <span className="text-[10px] uppercase font-black tracking-wider">{isHindi ? 'English' : 'हिंदी'}</span>
+                        </button>
+                        <button onClick={() => setActiveServiceModal('donate')} className="bg-green-50 text-green-600 p-2.5 rounded-xl font-bold flex flex-col items-center justify-center gap-1.5 hover:bg-green-100 transition border border-green-100 active:scale-95 text-xs">
+                          <Heart className="w-5 h-5"/>
+                          <span className="text-[10px] uppercase font-black tracking-wider">Donate Now</span>
+                        </button>
+                        <button onClick={() => { fetchServices(); setActiveServiceModal('parking'); }} className="bg-blue-50 text-blue-600 p-2.5 rounded-xl font-bold flex flex-col items-center justify-center gap-1.5 hover:bg-blue-100 transition border border-blue-100 active:scale-95 text-xs">
+                          <Car className="w-5 h-5"/>
+                          <span className="text-[10px] uppercase font-black tracking-wider">Parking Mgmt</span>
+                        </button>
+                        <button onClick={() => { fetchServices(); setActiveServiceModal('lostfound'); }} className="bg-purple-50 text-purple-600 p-2.5 rounded-xl font-bold flex flex-col items-center justify-center gap-1.5 hover:bg-purple-100 transition border border-purple-100 active:scale-95 col-span-2 text-xs">
+                          <Search className="w-5 h-5"/>
+                          <span className="text-[10px] uppercase font-black tracking-wider">AI Lost & Found (Kids/Items)</span>
+                        </button>
+                      </div>
+                    </div>
+
                   </div>
 
                   
@@ -531,7 +558,7 @@ function App() {
                       <div className="flex flex-col h-full bg-white rounded-2xl p-6 border border-gray-100 shadow-sm overflow-hidden">
                         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
                           <div>
-                            <h3 className="text-2xl font-black text-gray-900 tracking-tight">{isHindi ? "????? ?????" : "Select Temple"}</h3>
+                            <h3 className="text-2xl font-black text-gray-900 tracking-tight">{isHindi ? "मंदिर चुनें" : "Select Temple"}</h3>
                             <p className="text-sm font-medium text-gray-500">Choose your destination for Darshan</p>
                           </div>
                           <select 
@@ -558,7 +585,7 @@ function App() {
                                 {isFestival && <div className="absolute top-0 right-0 bg-red-500 text-white text-[9px] font-black px-3 py-1 rounded-bl-xl tracking-wider shadow-sm z-10">SANKASHTI - RUSH</div>}
                                 <div>
                                   <div className="font-black text-gray-900 text-lg group-hover:text-orange-600 transition-colors pr-16 leading-tight mb-1">{t.name}</div>
-                                  <div className="text-xs font-bold text-gray-400 flex items-center gap-1"><Map className="w-3 h-3"/>{t.city}</div>
+                                  <div className="text-xs font-bold text-gray-400 flex items-center gap-1"><MapPin className="w-3 h-3"/>{t.city}</div>
                                 </div>
                                 <div className="flex justify-between items-end mt-4 pt-4 border-t border-gray-100">
                                   <div className="text-[10px] font-black text-gray-400 uppercase tracking-wider">Crowd Density</div>
@@ -1114,6 +1141,102 @@ function App() {
             )}
           </section>
         )}
+
+      {/* Dynamic Services Modals */}
+      {activeServiceModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300">
+          <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden relative border border-gray-100">
+            <button onClick={() => {setActiveServiceModal(null); setSosSent(false);}} className="absolute top-4 right-4 text-gray-400 hover:text-gray-900 bg-gray-100 rounded-full p-2"><X className="w-5 h-5"/></button>
+            
+            {activeServiceModal === 'sos' && (
+              <div className="p-8 text-center">
+                <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <AlertTriangle className="w-10 h-10 text-red-600" />
+                </div>
+                <h3 className="text-2xl font-black text-gray-900 mb-2">Emergency SOS</h3>
+                <p className="text-gray-500 mb-8 font-medium">This will instantly alert Temple Security and broadcast your approximate zone via CCTV tracking.</p>
+                {sosSent ? (
+                  <div className="bg-green-50 text-green-700 p-4 rounded-xl font-bold border border-green-200">Alert Sent! Security is on the way.</div>
+                ) : (
+                  <button onClick={async () => {
+                    try { await axios.post(`${API_URL}/services/sos`, {user_name: userDashboard?.user?.name || 'Devotee', location: 'Main Gate'}); setSosSent(true); } catch(e) {}
+                  }} className="w-full py-4 bg-red-600 hover:bg-red-700 text-white font-black text-xl tracking-wider rounded-xl shadow-lg active:scale-95 transition">TRIGGER SOS</button>
+                )}
+              </div>
+            )}
+
+            {activeServiceModal === 'donate' && (
+              <div className="p-8">
+                <h3 className="text-2xl font-black text-gray-900 mb-2">Temple Donation</h3>
+                <p className="text-gray-500 mb-6 text-sm font-medium">Your digital contribution helps maintain the premises.</p>
+                <div className="grid grid-cols-3 gap-3 mb-6">
+                  {[101, 501, 1001].map(amt => (
+                    <button key={amt} onClick={() => setDonateAmount(String(amt))} className={`py-3 font-black rounded-xl border-2 transition-all ${donateAmount === String(amt) ? 'border-green-500 bg-green-50 text-green-700 shadow-sm' : 'border-gray-100 bg-gray-50 text-gray-600 hover:border-green-300'}`}>₹{amt}</button>
+                  ))}
+                </div>
+                <button onClick={async () => {
+                    if (!donateAmount) return;
+                    try { await axios.post(`${API_URL}/services/donate`, {user_name: userDashboard?.user?.name || 'Devotee', amount: Number(donateAmount)}); alert("Payment Successful!"); setActiveServiceModal(null); } catch(e) {}
+                }} className={`w-full py-4 font-black rounded-xl shadow-md transition ${!donateAmount ? 'bg-gray-200 text-gray-400' : 'bg-green-600 hover:bg-green-700 text-white active:scale-95'}`}>Pay via UPI</button>
+              </div>
+            )}
+
+            {activeServiceModal === 'parking' && (
+              <div className="p-8 text-center">
+                <h3 className="text-2xl font-black text-gray-900 mb-2">Smart Parking</h3>
+                <p className="text-gray-500 mb-6 text-sm font-medium">Real-time availability of temple parking lots.</p>
+                
+                <div className="mb-8">
+                  <div className="flex justify-between text-sm font-black mb-2 text-gray-700">
+                    <span>Capacity</span>
+                    <span>{parkingData ? Math.round((parkingData.booked/parkingData.total)*100) : 0}% Full</span>
+                  </div>
+                  <div className="w-full bg-gray-100 rounded-full h-4 overflow-hidden shadow-inner">
+                    <div className="bg-blue-500 h-4 rounded-full" style={{width: `${parkingData ? (parkingData.booked/parkingData.total)*100 : 0}%`}}></div>
+                  </div>
+                  <div className="text-xs text-gray-500 mt-2 font-bold">{parkingData ? parkingData.total - parkingData.booked : 0} Spots Remaining</div>
+                </div>
+
+                <button onClick={async () => {
+                    try { await axios.post(`${API_URL}/services/parking/book`); alert("Parking slot reserved!"); fetchServices(); } catch(e:any) {alert(e.response?.data?.detail || "Error");}
+                }} className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white font-black rounded-xl shadow-md active:scale-95 transition tracking-wide">Reserve Parking Slot</button>
+              </div>
+            )}
+
+            {activeServiceModal === 'lostfound' && (
+              <div className="p-8 flex flex-col h-[500px]">
+                <h3 className="text-2xl font-black text-gray-900 mb-1">AI Lost & Found</h3>
+                <p className="text-gray-500 mb-6 text-xs font-medium">CCTV cameras will actively scan for reported children.</p>
+                
+                <div className="bg-gray-50 p-4 rounded-xl mb-4 border-2 border-gray-100">
+                  <div className="flex gap-2 mb-3">
+                    <select value={lfType} onChange={(e)=>setLfType(e.target.value)} className="p-2 border border-gray-200 bg-white rounded-lg outline-none text-sm font-bold"><option value="child">Lost Child</option><option value="item">Lost Item</option></select>
+                    <input value={lfDesc} onChange={(e)=>setLfDesc(e.target.value)} placeholder="E.g. Red shirt..." className="flex-1 p-2 border border-gray-200 rounded-lg outline-none text-sm font-medium" />
+                  </div>
+                  <button onClick={async () => {
+                      if (!lfDesc) return;
+                      try { await axios.post(`${API_URL}/services/lostfound`, {item_type: lfType, desc: lfDesc}); setLfDesc(''); fetchServices(); } catch(e) {}
+                  }} className="w-full py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-black text-sm tracking-wide shadow-sm active:scale-95 transition">Report Missing</button>
+                </div>
+
+                <h4 className="font-black text-xs text-gray-400 uppercase tracking-widest mb-3">Live AI Search Feed</h4>
+                <div className="flex-1 overflow-y-auto pr-2 flex flex-col gap-2">
+                  {lostFoundData.map((lf, i) => (
+                    <div key={i} className="p-4 border-2 border-gray-100 rounded-xl flex justify-between items-center bg-white shadow-sm">
+                      <div>
+                        <div className="font-bold text-sm text-gray-900">{lf.desc}</div>
+                        <div className="text-[10px] text-gray-400 uppercase tracking-widest font-bold mt-1">{lf.type}</div>
+                      </div>
+                      <div className={`text-[10px] font-black uppercase px-2 py-1 rounded-md tracking-wider ${lf.status === 'found' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700 animate-pulse'}`}>{lf.status}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       </main>
     </div>
   );
