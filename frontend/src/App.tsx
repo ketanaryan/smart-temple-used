@@ -29,27 +29,39 @@ const normalizeCity = (city: string) => {
   return city.trim().split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
 };
 
-const getTempleUpiConfig = (templeName: string) => {
-  const name = (templeName || '').toLowerCase();
-  if (name.includes('kashi') || name.includes('vishwanath')) {
-    return { upiId: 'kashivishwanath.trust@sbi', trustName: 'Shri Kashi Vishwanath Mandir Trust' };
+const getTempleUpiConfig = (templeName: string, templesList: any[] = []) => {
+  const tName = (templeName || '').toLowerCase().trim();
+  const matched = (templesList || []).find((t: any) => 
+    t.name && (t.name.toLowerCase().trim() === tName || tName.includes(t.name.toLowerCase().trim()) || t.name.toLowerCase().trim().includes(tName))
+  );
+  if (matched) {
+    const defaultUpi = `${matched.name.toLowerCase().replace(/[^a-z0-9]/g, '')}.trust@sbi`;
+    return {
+      upiId: matched.upi_id || defaultUpi,
+      trustName: matched.trust_name || `${matched.name} Trust`,
+      qrImage: matched.qr_image || null,
+      isVerifiedCustomQr: Boolean(matched.qr_image)
+    };
   }
-  if (name.includes('siddhi') || name.includes('vinayak')) {
-    return { upiId: 'siddhivinayak.trust@axis', trustName: 'Shree Siddhivinayak Ganapati Temple Trust' };
+  if (tName.includes('kashi') || tName.includes('vishwanath')) {
+    return { upiId: 'kashivishwanath.trust@sbi', trustName: 'Shri Kashi Vishwanath Mandir Trust', qrImage: null, isVerifiedCustomQr: false };
   }
-  if (name.includes('somnath')) {
-    return { upiId: 'somnath.trust@sbi', trustName: 'Shree Somnath Trust' };
+  if (tName.includes('siddhi') || tName.includes('vinayak')) {
+    return { upiId: 'siddhivinayak.trust@axis', trustName: 'Shree Siddhivinayak Ganapati Temple Trust', qrImage: null, isVerifiedCustomQr: false };
   }
-  if (name.includes('mahakal')) {
-    return { upiId: 'mahakaleshwar.trust@pnb', trustName: 'Shri Mahakaleshwar Temple Management Committee' };
+  if (tName.includes('somnath')) {
+    return { upiId: 'somnath.trust@sbi', trustName: 'Shree Somnath Trust', qrImage: null, isVerifiedCustomQr: false };
   }
-  if (name.includes('tirupati') || name.includes('venkateswara') || name.includes('balaji')) {
-    return { upiId: 'tirupati.ttd@sbi', trustName: 'Tirumala Tirupati Devasthanams (TTD)' };
+  if (tName.includes('mahakal')) {
+    return { upiId: 'mahakaleshwar.trust@pnb', trustName: 'Shri Mahakaleshwar Temple Management Committee', qrImage: null, isVerifiedCustomQr: false };
   }
-  if (name.includes('vaishno') || name.includes('devi')) {
-    return { upiId: 'vaishnodevi.shrine@sbi', trustName: 'Shri Mata Vaishno Devi Shrine Board' };
+  if (tName.includes('tirupati') || tName.includes('venkateswara') || tName.includes('balaji')) {
+    return { upiId: 'tirupati.ttd@sbi', trustName: 'Tirumala Tirupati Devasthanams (TTD)', qrImage: null, isVerifiedCustomQr: false };
   }
-  return { upiId: 'templetrust@sbi', trustName: `${templeName || 'Smart Temple'} Trust` };
+  if (tName.includes('vaishno') || tName.includes('devi')) {
+    return { upiId: 'vaishnodevi.shrine@sbi', trustName: 'Shri Mata Vaishno Devi Shrine Board', qrImage: null, isVerifiedCustomQr: false };
+  }
+  return { upiId: 'templetrust@sbi', trustName: `${templeName || 'Smart Temple'} Trust`, qrImage: null, isVerifiedCustomQr: false };
 };
 
 function App() {
@@ -100,7 +112,7 @@ function App() {
   const [donateReceiptData, setDonateReceiptData] = useState<any>(null);
   const [copiedUpi, setCopiedUpi] = useState(false);
   const [isSubmittingDonation, setIsSubmittingDonation] = useState(false);
-  const [showUpiQr, setShowUpiQr] = useState(false);
+  const [showUpiQr, setShowUpiQr] = useState(true);
   const [lostFoundData, setLostFoundData] = useState<any[]>([]);
   const [parkingData, setParkingData] = useState<any>(null);
   const [parkingZone, setParkingZone] = useState<'A' | 'B' | 'C'>('A');
@@ -136,6 +148,13 @@ function App() {
   const [recentDonations, setRecentDonations] = useState<any[]>(() => {
     try { return JSON.parse(localStorage.getItem('recentDonations') || '[]'); } catch { return []; }
   });
+
+  // Temple Admin Official UPI & Authentic QR Code State
+  const [adminUpiId, setAdminUpiId] = useState<string>('');
+  const [adminTrustName, setAdminTrustName] = useState<string>('');
+  const [adminQrImage, setAdminQrImage] = useState<string | null>(null);
+  const [isSavingDonationSettings, setIsSavingDonationSettings] = useState<boolean>(false);
+  const [adminDonationMsg, setAdminDonationMsg] = useState<{ type: 'success' | 'error', text: string } | null>(null);
 
   // Ticket Preview Details
   const [bookedTicketDetails, setBookedTicketDetails] = useState<any>(null);
@@ -417,6 +436,58 @@ function App() {
     }
   };
 
+  // Synchronize admin donation settings whenever adminTempleState or temples changes
+  useEffect(() => {
+    const currentManagingTemple = temples.find((t: any) => t.id === adminTempleState);
+    if (currentManagingTemple) {
+      setAdminUpiId(currentManagingTemple.upi_id || `${currentManagingTemple.name.toLowerCase().replace(/[^a-z0-9]/g, '')}.trust@sbi`);
+      setAdminTrustName(currentManagingTemple.trust_name || `${currentManagingTemple.name} Trust`);
+      setAdminQrImage(currentManagingTemple.qr_image || null);
+    }
+  }, [adminTempleState, temples]);
+
+  const handleAdminQrUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        alert(isHindi ? "QR इमेज का आकार 5MB से कम होना चाहिए।" : "QR image size must be under 5MB.");
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setAdminQrImage(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleSaveDonationSettings = async () => {
+    setIsSavingDonationSettings(true);
+    setAdminDonationMsg(null);
+    try {
+      const token = localStorage.getItem('token') || localStorage.getItem('adminToken');
+      const res = await axios.post(`${API_URL}/admin/temples/${adminTempleState}/donation-settings`, {
+        upi_id: adminUpiId,
+        trust_name: adminTrustName,
+        qr_image: adminQrImage
+      }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setTemples(prev => prev.map((t: any) => t.id === adminTempleState ? {
+        ...t,
+        upi_id: adminUpiId,
+        trust_name: adminTrustName,
+        qr_image: adminQrImage
+      } : t));
+      setAdminDonationMsg({ type: 'success', text: res.data.message || (isHindi ? "मंदिर UPI एवं QR कोड सफलतापूर्वक सहेजा गया!" : "Temple UPI & QR Code updated successfully!") });
+      setTimeout(() => setAdminDonationMsg(null), 4000);
+    } catch (err: any) {
+      setAdminDonationMsg({ type: 'error', text: err.response?.data?.detail || err.message || (isHindi ? "सेटिंग्स सहेजने में विफल।" : "Failed to update donation settings.") });
+    } finally {
+      setIsSavingDonationSettings(false);
+    }
+  };
+
   useEffect(() => {
     fetchTemples();
     fetchQueueStatus();
@@ -554,7 +625,7 @@ function App() {
   };
 
   const handleCopyUpi = () => {
-    const upiCfg = getTempleUpiConfig(donateTemple);
+    const upiCfg = getTempleUpiConfig(donateTemple, temples);
     navigator.clipboard.writeText(upiCfg.upiId);
     setCopiedUpi(true);
     setTimeout(() => setCopiedUpi(false), 2500);
@@ -1231,7 +1302,14 @@ function App() {
                           <AlertTriangle className="w-5 h-5"/>
                           <span className="text-[10px] uppercase font-black tracking-wider">{isHindi ? "आपातकालीन SOS" : "Emergency SOS"}</span>
                         </button>
-                        <button onClick={() => { setDonateStep('select'); setDonateUtr(''); setDonateScreenshot(null); setActiveServiceModal('donate'); }} className="bg-green-50 text-green-600 p-2.5 rounded-xl font-bold flex flex-col items-center justify-center gap-1.5 hover:bg-green-100 transition border border-green-100 active:scale-95 text-xs">
+                        <button onClick={() => { 
+                          setDonateStep('select'); 
+                          setDonateUtr(''); 
+                          setDonateScreenshot(null); 
+                          const activeObj = temples.find((t: any) => String(t.id) === String(selectedTemple));
+                          if (activeObj) setDonateTemple(activeObj.name);
+                          setActiveServiceModal('donate'); 
+                        }} className="bg-green-50 text-green-600 p-2.5 rounded-xl font-bold flex flex-col items-center justify-center gap-1.5 hover:bg-green-100 transition border border-green-100 active:scale-95 text-xs">
                           <Heart className="w-5 h-5"/>
                           <span className="text-[10px] uppercase font-black tracking-wider">{isHindi ? "दान करें" : "Donate Now"}</span>
                         </button>
@@ -2120,6 +2198,168 @@ function App() {
                   </div>
                 </div>
 
+                {/* Temple Official Trust UPI & Authentic QR Code Management Card */}
+                <div className="bg-white border-2 border-orange-200 rounded-2xl p-6 shadow-sm flex flex-col gap-5 mt-2">
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-gray-100 pb-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-11 h-11 bg-orange-100 text-orange-600 rounded-2xl flex items-center justify-center font-bold shadow-xs">
+                        <QrCode className="w-6 h-6 text-orange-600" />
+                      </div>
+                      <div>
+                        <h3 className="text-lg font-black text-gray-900 leading-tight flex items-center gap-2">
+                          <span>{isHindi ? "आधिकारिक मंदिर UPI एवं QR कोड प्रबंधन" : "Temple Official UPI & QR Code Configuration"}</span>
+                          <span className="bg-emerald-100 text-emerald-800 text-[10px] font-black px-2.5 py-0.5 rounded-full border border-emerald-200">
+                            {adminQrImage ? (isHindi ? "सत्यापित QR सक्रिय" : "Verified QR Live") : (isHindi ? "डायनामिक UPI सक्रिय" : "Dynamic UPI Active")}
+                          </span>
+                        </h3>
+                        <p className="text-xs text-gray-500 font-medium mt-0.5">
+                          {isHindi 
+                            ? "श्रद्धालुओं के दान हेतु मंदिर काउंटर का मूल QR कोड अपलोड करें एवं आधिकारिक UPI ID/न्यास नाम सेट करें।" 
+                            : "Upload the authentic physical counter QR code and set verified trust UPI details for devotee offerings."}
+                        </p>
+                      </div>
+                    </div>
+
+                    {adminDonationMsg && (
+                      <div className={`text-xs font-bold px-3 py-2 rounded-xl border animate-in fade-in flex items-center gap-2 ${adminDonationMsg.type === 'success' ? 'bg-green-50 text-green-800 border-green-200' : 'bg-red-50 text-red-800 border-red-200'}`}>
+                        {adminDonationMsg.type === 'success' ? <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0" /> : <AlertTriangle className="w-4 h-4 text-red-600 flex-shrink-0" />}
+                        <span>{adminDonationMsg.text}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Form Grid */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* UPI ID */}
+                    <div>
+                      <label className="block text-xs font-black uppercase text-gray-500 mb-1.5">
+                        {isHindi ? "आधिकारिक मंदिर UPI ID (VPA)" : "Official Temple UPI ID (VPA)"} <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={adminUpiId}
+                        onChange={(e) => setAdminUpiId(e.target.value)}
+                        placeholder="e.g. kashivishwanath.trust@sbi"
+                        className="w-full p-3 border-2 border-gray-200 rounded-xl bg-gray-50 font-mono font-bold text-sm text-gray-900 outline-none focus:border-orange-500 focus:bg-white transition"
+                      />
+                      <span className="text-[10px] text-gray-400 mt-1 block">
+                        {isHindi ? "बैंक खाते से संबद्ध आधिकारिक UPI पता जिस पर राशि जमा होगी" : "Official UPI address linked to the temple trust bank account"}
+                      </span>
+                    </div>
+
+                    {/* Trust Name */}
+                    <div>
+                      <label className="block text-xs font-black uppercase text-gray-500 mb-1.5">
+                        {isHindi ? "मंदिर न्यास का कानूनी नाम" : "Temple Trust Legal / Account Name"} <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={adminTrustName}
+                        onChange={(e) => setAdminTrustName(e.target.value)}
+                        placeholder="e.g. Shri Kashi Vishwanath Mandir Trust"
+                        className="w-full p-3 border-2 border-gray-200 rounded-xl bg-gray-50 font-bold text-sm text-gray-900 outline-none focus:border-orange-500 focus:bg-white transition"
+                      />
+                      <span className="text-[10px] text-gray-400 mt-1 block">
+                        {isHindi ? "80G कर छूट रसीद एवं बैंक खाते पर मुद्रित कानूनी नाम" : "Official registered trust name printed on 80G tax receipts"}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* QR Code Upload & Devotee Preview Area */}
+                  <div className="border-t border-gray-100 pt-4 flex flex-col md:flex-row gap-6 items-start">
+                    <div className="flex-1 w-full">
+                      <label className="block text-xs font-black uppercase text-gray-500 mb-2">
+                        {isHindi ? "मंदिर काउंटर का मूल QR कोड फोटो / इमेज अपलोड करें" : "Upload Authentic Temple Counter QR Image"}
+                      </label>
+
+                      <label className="border-2 border-dashed border-orange-300 hover:border-orange-500 bg-orange-50/40 hover:bg-orange-50/80 rounded-2xl p-5 flex flex-col items-center justify-center cursor-pointer transition text-center group">
+                        <Upload className="w-8 h-8 text-orange-600 mb-2 group-hover:scale-110 transition-transform" />
+                        <span className="text-sm font-bold text-orange-900">
+                          {isHindi ? "यहाँ क्लिक करके मंदिर का QR कोड फोटो चुनें" : "Click or tap to upload authentic QR code image"}
+                        </span>
+                        <span className="text-[11px] text-gray-500 mt-1">PNG, JPG, JPEG, WEBP (Max 5MB)</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleAdminQrUpload}
+                          className="hidden"
+                        />
+                      </label>
+
+                      <div className="mt-2 text-[11px] text-gray-500 leading-relaxed bg-gray-50 p-2.5 rounded-xl border border-gray-200">
+                        💡 {isHindi 
+                          ? "सुझाव: मंदिर के दान काउंटर पर लगे आधिकारिक स्टैंडी या बैंक क्यूआर की स्पष्ट फोटो अपलोड करें। यदि कोई फोटो अपलोड नहीं की जाती, तो सिस्टम स्वतः गतिशील QR कोड तैयार करेगा।" 
+                          : "Tip: Upload a clear photo of the physical standee or bank QR display from the temple counter. Devotees scanning this will pay directly into the verified trust account."}
+                      </div>
+                    </div>
+
+                    {/* Devotee Live Preview Box */}
+                    <div className="w-full md:w-56 flex flex-col items-center text-center bg-gray-50 border border-gray-200 rounded-2xl p-4">
+                      <div className="text-[10px] font-black uppercase text-gray-400 mb-2 tracking-wider">
+                        {isHindi ? "श्रद्धालु दृश्य पूर्वावलोकन" : "Devotee Live Preview"}
+                      </div>
+
+                      {adminQrImage ? (
+                        <div className="flex flex-col items-center">
+                          <div className="relative group">
+                            <img
+                              src={adminQrImage}
+                              alt="Admin Uploaded QR"
+                              className="w-40 h-40 object-contain rounded-xl border-2 border-emerald-400 bg-white p-1.5 shadow-sm"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setAdminQrImage(null)}
+                              className="absolute -top-2 -right-2 bg-red-600 hover:bg-red-700 text-white p-1 rounded-full shadow-md transition"
+                              title="Remove uploaded QR image"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          </div>
+                          <span className="mt-2 text-[10px] font-bold text-emerald-800 bg-emerald-100 border border-emerald-300 px-2 py-0.5 rounded-full flex items-center gap-1 shadow-xs">
+                            <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                            {isHindi ? "सत्यापित मूल QR" : "Verified Custom QR"}
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center">
+                          <QRCodeSVG
+                            value={`upi://pay?pa=${adminUpiId || 'templetrust@sbi'}&pn=${encodeURIComponent(adminTrustName || 'Temple Trust')}&cu=INR`}
+                            size={135}
+                            level="M"
+                            className="p-1.5 bg-white rounded-xl border border-gray-200 shadow-xs"
+                          />
+                          <span className="mt-2 text-[10px] font-bold text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-full">
+                            {isHindi ? "स्वतः जनित डायनामिक QR" : "Auto-Generated UPI QR"}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Save Button */}
+                  <div className="flex justify-end pt-2 border-t border-gray-100">
+                    <button
+                      type="button"
+                      onClick={handleSaveDonationSettings}
+                      disabled={isSavingDonationSettings || !adminUpiId.trim() || !adminTrustName.trim()}
+                      className="bg-orange-600 hover:bg-orange-700 text-white px-7 py-3 rounded-xl font-bold text-sm shadow-md transition-all flex items-center gap-2 active:scale-95 disabled:opacity-50 disabled:pointer-events-none"
+                    >
+                      {isSavingDonationSettings ? (
+                        <>
+                          <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+                          <span>{isHindi ? "सहेज रहे हैं..." : "Saving..."}</span>
+                        </>
+                      ) : (
+                        <>
+                          <CheckCircle2 className="w-4 h-4" />
+                          <span>{isHindi ? "QR एवं UPI विवरण सुरक्षित करें" : "Save & Publish Temple QR"}</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+
                 <div className="bg-gray-900 border border-gray-800 p-6 rounded-2xl flex flex-col gap-4 shadow-xl relative overflow-hidden mt-4">
                   <div className="flex justify-between items-center">
                     <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
@@ -2333,7 +2573,7 @@ function App() {
             )}
 
             {activeServiceModal === 'donate' && (() => {
-              const currentUpiCfg = getTempleUpiConfig(donateTemple);
+              const currentUpiCfg = getTempleUpiConfig(donateTemple, temples);
               return (
                 <div className="p-6 md:p-8 flex flex-col max-h-[85vh] overflow-y-auto">
                   {/* Header */}
@@ -2385,12 +2625,22 @@ function App() {
                           onChange={(e) => setDonateTemple(e.target.value)}
                           className="w-full p-2.5 border-2 border-gray-100 rounded-xl bg-gray-50 text-sm font-bold text-gray-800 outline-none focus:border-emerald-500 focus:bg-white transition cursor-pointer"
                         >
-                          <option value="Shri Kashi Vishwanath Temple">Shri Kashi Vishwanath Mandir Trust, Varanasi</option>
-                          <option value="Shree Siddhivinayak Temple">Shree Siddhivinayak Ganapati Temple Trust, Mumbai</option>
-                          <option value="Shree Somnath Jyotirlinga">Shree Somnath Trust, Prabhas Patan</option>
-                          <option value="Mahakaleshwar Jyotirlinga">Shri Mahakaleshwar Temple Committee, Ujjain</option>
-                          <option value="Tirumala Tirupati Devasthanams">Tirumala Tirupati Devasthanams (TTD), Tirupati</option>
-                          <option value="Shri Mata Vaishno Devi Shrine">Shri Mata Vaishno Devi Shrine Board, Katra</option>
+                          {temples && temples.length > 0 ? (
+                            temples.map((t: any) => (
+                              <option key={t.id} value={t.name}>
+                                {t.name} ({t.city})
+                              </option>
+                            ))
+                          ) : (
+                            <>
+                              <option value="Shri Kashi Vishwanath Temple">Shri Kashi Vishwanath Mandir Trust, Varanasi</option>
+                              <option value="Shree Siddhivinayak Temple">Shree Siddhivinayak Ganapati Temple Trust, Mumbai</option>
+                              <option value="Shree Somnath Jyotirlinga">Shree Somnath Trust, Prabhas Patan</option>
+                              <option value="Mahakaleshwar Jyotirlinga">Shri Mahakaleshwar Temple Committee, Ujjain</option>
+                              <option value="Tirumala Tirupati Devasthanams">Tirumala Tirupati Devasthanams (TTD), Tirupati</option>
+                              <option value="Shri Mata Vaishno Devi Shrine">Shri Mata Vaishno Devi Shrine Board, Katra</option>
+                            </>
+                          )}
                         </select>
                       </div>
 
@@ -2549,16 +2799,41 @@ function App() {
 
                       {showUpiQr && (
                         <div className="bg-white border-2 border-dashed border-emerald-300 p-4 rounded-2xl flex flex-col items-center text-center animate-in zoom-in-95 shadow-sm">
-                          <QRCodeSVG 
-                            value={`upi://pay?pa=${currentUpiCfg.upiId}&pn=${encodeURIComponent(currentUpiCfg.trustName)}&am=${donateAmount || '101'}&cu=INR&tn=${encodeURIComponent(donatePurpose || 'Temple Donation')}`} 
-                            size={150} 
-                            level="M" 
-                          />
-                          <div className="mt-2 text-xs font-bold text-gray-700">
-                            Scan with GPay / PhonePe / Paytm / BHIM
-                          </div>
-                          <div className="text-[11px] text-emerald-700 font-black mt-0.5">
-                            Amount: ₹{donateAmount || '101'}
+                          {currentUpiCfg.qrImage ? (
+                            <div className="flex flex-col items-center">
+                              <div className="inline-flex items-center gap-1.5 bg-emerald-100 text-emerald-800 text-[11px] font-bold px-3 py-1 rounded-full mb-3 shadow-xs">
+                                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                                <span>{isHindi ? "आधिकारिक सत्यापित मंदिर QR कोड" : "Verified Official Temple QR Code"}</span>
+                              </div>
+                              <img 
+                                src={currentUpiCfg.qrImage} 
+                                alt={`${currentUpiCfg.trustName} QR Code`} 
+                                className="w-52 h-52 object-contain rounded-xl border-2 border-emerald-400 p-1.5 shadow-sm bg-white hover:scale-[1.02] transition"
+                              />
+                              <div className="mt-2 text-xs font-bold text-gray-800">
+                                {currentUpiCfg.trustName}
+                              </div>
+                              <div className="text-[11px] text-gray-500 font-mono mt-0.5">
+                                UPI ID: {currentUpiCfg.upiId}
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="flex flex-col items-center">
+                              <div className="inline-flex items-center gap-1.5 bg-blue-50 text-blue-700 text-[10px] font-bold px-2.5 py-0.5 rounded-full mb-2">
+                                <span>{isHindi ? "डायनामिक UPI QR कोड" : "Dynamic Instant UPI QR"}</span>
+                              </div>
+                              <QRCodeSVG 
+                                value={`upi://pay?pa=${currentUpiCfg.upiId}&pn=${encodeURIComponent(currentUpiCfg.trustName)}&am=${donateAmount || '101'}&cu=INR&tn=${encodeURIComponent(donatePurpose || 'Temple Donation')}`} 
+                                size={150} 
+                                level="M" 
+                              />
+                              <div className="mt-2 text-xs font-bold text-gray-700">
+                                Scan with GPay / PhonePe / Paytm / BHIM
+                              </div>
+                            </div>
+                          )}
+                          <div className="text-[11px] text-emerald-700 font-black mt-2 bg-emerald-50 px-3 py-1 rounded-full">
+                            {isHindi ? `दान संकल्प राशि: ₹${donateAmount || '101'}` : `Offering Amount: ₹${donateAmount || '101'}`}
                           </div>
                         </div>
                       )}

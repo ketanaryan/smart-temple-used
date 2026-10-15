@@ -558,6 +558,64 @@ def get_temple_bookings(temple_id: int, db: Session = Depends(get_db), current_u
         })
     return results
 
+@app.get('/admin/temples/{temple_id}/donation-settings')
+def get_temple_donation_settings(
+    temple_id: int, 
+    db: Session = Depends(get_db), 
+    current_user: models.User = Depends(get_current_user)
+):
+    if not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Admin authorization required")
+    temple = db.query(models.Temple).filter(models.Temple.id == temple_id).first()
+    if not temple:
+        raise HTTPException(status_code=404, detail="Temple not found")
+    return {
+        "id": temple.id,
+        "name": temple.name,
+        "city": temple.city,
+        "upi_id": temple.upi_id or f"{temple.name.lower().replace(' ', '')}.trust@sbi",
+        "trust_name": temple.trust_name or f"{temple.name} Trust",
+        "qr_image": temple.qr_image
+    }
+
+@app.post('/admin/temples/{temple_id}/donation-settings')
+def update_temple_donation_settings(
+    temple_id: int, 
+    data: schemas.TempleDonationSettingsUpdate, 
+    db: Session = Depends(get_db), 
+    current_user: models.User = Depends(get_current_user)
+):
+    if not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Admin authorization required")
+    temple = db.query(models.Temple).filter(models.Temple.id == temple_id).first()
+    if not temple:
+        raise HTTPException(status_code=404, detail="Temple not found")
+    
+    if current_user.email != 'mainadmin@smarttemple.com' and temple.admin_id != current_user.id:
+        raise HTTPException(status_code=403, detail="You do not have permission to manage this temple's QR & donation details")
+    
+    if data.upi_id is not None:
+        temple.upi_id = data.upi_id.strip()
+    if data.trust_name is not None:
+        temple.trust_name = data.trust_name.strip()
+    if data.qr_image is not None:
+        temple.qr_image = data.qr_image
+    
+    db.commit()
+    db.refresh(temple)
+    return {
+        "success": True,
+        "message": f"Official UPI & QR code for {temple.name} updated successfully!",
+        "temple": {
+            "id": temple.id,
+            "name": temple.name,
+            "city": temple.city,
+            "upi_id": temple.upi_id,
+            "trust_name": temple.trust_name,
+            "qr_image": temple.qr_image
+        }
+    }
+
 
 # --- DYNAMIC SERVICES IN-MEMORY DB ---
 # For hackathon demo purposes, these are kept in-memory

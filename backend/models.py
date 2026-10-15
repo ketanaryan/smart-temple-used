@@ -23,6 +23,9 @@ class Temple(Base):
     name = Column(String, index=True)
     city = Column(String, index=True)
     admin_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    upi_id = Column(String, nullable=True)
+    trust_name = Column(String, nullable=True)
+    qr_image = Column(String, nullable=True)
 
     slots = relationship("TimeSlot", back_populates="temple")
     admin = relationship("User", foreign_keys=[admin_id])

@@ -26,12 +26,21 @@ class TokenData(BaseModel):
 class TempleBase(BaseModel):
     name: str
     city: str
+    upi_id: Optional[str] = None
+    trust_name: Optional[str] = None
+    qr_image: Optional[str] = None
 
 class TempleCreate(TempleBase):
     pass
 
+class TempleDonationSettingsUpdate(BaseModel):
+    upi_id: Optional[str] = None
+    trust_name: Optional[str] = None
+    qr_image: Optional[str] = None
+
 class Temple(TempleBase):
     id: int
+    admin_id: Optional[int] = None
 
     class Config:
         from_attributes = True
