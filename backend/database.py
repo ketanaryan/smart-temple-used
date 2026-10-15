@@ -13,7 +13,7 @@ SQLITE_URL = f"sqlite:///{db_path}"
 
 try:
     # Try connecting to PostgreSQL / Supabase
-    temp_engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"connect_timeout": 2})
+    temp_engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"connect_timeout": 10})
     with temp_engine.connect() as conn:
         pass
     engine = temp_engine
