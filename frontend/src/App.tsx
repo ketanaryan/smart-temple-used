@@ -273,7 +273,7 @@ function App() {
 
   const isBookingActive = (b: any) => {
     if (!b || !b.date) return false;
-    if (b.status === 'SERVED' || b.status === 'CANCELLED' || b.status === 'COMPLETED') {
+    if (b.status === 'SERVED' || b.status === 'CANCELLED' || b.status === 'COMPLETED' || b.status === 'VISITED') {
       return false;
     }
     const today = getLocalDateStr();
@@ -315,50 +315,81 @@ function App() {
                 Verifying ticket...
               </div>
             ) : (
-              <>
-                <div className="flex justify-between items-center border-b border-dashed border-gray-300 pb-6">
-                  <div>
-                    <div className="text-xs font-bold text-gray-400 uppercase">Devotee</div>
-                    <div className="text-lg font-black text-gray-800">{ticketData.user_name}</div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-xs font-bold text-gray-400 uppercase">{isHindi ? "स्थिति" : "Status"}</div>
-                    {(!ticketData.status || ticketData.status === 'IN_QUEUE' || ticketData.status === 'CONFIRMED' || ticketData.status === 'BOOKED') ? (
-                      <div className="inline-flex items-center gap-1.5 text-sm font-black text-emerald-700 bg-emerald-50 border border-emerald-300 px-3 py-1 rounded-full mt-1 shadow-sm">
-                        <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                        {isHindi ? 'कन्फर्म' : 'CONFIRMED'}
+              (() => {
+                const isTicketPassed = !isBookingActive(ticketData) || ticketData?.status === 'VISITED' || ticketData?.status === 'SERVED' || ticketData?.status === 'COMPLETED';
+                return (
+                  <>
+                    <div className="flex justify-between items-center border-b border-dashed border-gray-300 pb-6">
+                      <div>
+                        <div className="text-xs font-bold text-gray-400 uppercase">Devotee</div>
+                        <div className="text-lg font-black text-gray-800">{ticketData.user_name}</div>
                       </div>
-                    ) : (ticketData.status === 'SERVED' || ticketData.status === 'COMPLETED') ? (
-                      <div className="inline-flex items-center gap-1.5 text-sm font-black text-blue-700 bg-blue-50 border border-blue-300 px-3 py-1 rounded-full mt-1 shadow-sm">
-                        <Clock className="w-4 h-4 text-blue-600" />
-                        {isHindi ? 'दर्शन संपन्न' : 'COMPLETED'}
+                      <div className="text-right">
+                        <div className="text-xs font-bold text-gray-400 uppercase">{isHindi ? "स्थिति" : "Status"}</div>
+                        {isTicketPassed ? (
+                          <div className="inline-flex items-center gap-1.5 text-xs font-black text-blue-700 bg-blue-50 border border-blue-300 px-3 py-1 rounded-full mt-1 shadow-sm uppercase tracking-wider">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-blue-600" />
+                            {isHindi ? 'दर्शन संपन्न (VISITED)' : 'VISITED'}
+                          </div>
+                        ) : (
+                          <div className="inline-flex items-center gap-1.5 text-sm font-black text-emerald-700 bg-emerald-50 border border-emerald-300 px-3 py-1 rounded-full mt-1 shadow-sm uppercase tracking-wider">
+                            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                            {isHindi ? 'कन्फर्म' : 'CONFIRMED'}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <div className="text-xs font-bold text-gray-400 uppercase">{isHindi ? "तिथि" : "Date"}</div>
+                        <div className="text-md font-bold text-gray-800">{ticketData.date}</div>
+                      </div>
+                      <div>
+                        <div className="text-xs font-bold text-gray-400 uppercase">{isHindi ? "समय स्लॉट" : "Time Slot"}</div>
+                        <div className="text-md font-bold text-gray-800">{formatTime(ticketData.start_time)} - {formatTime(ticketData.end_time)}</div>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 flex flex-col items-center">
+                      <div className="p-4 bg-gray-50 rounded-2xl border border-gray-100 mb-2 relative overflow-hidden">
+                        <QRCodeSVG value={`${window.location.origin}/?ticket=${ticketData.token}`} size={150} level="H" fgColor={isTicketPassed ? "#94a3b8" : "#000000"} />
+                        {isTicketPassed && (
+                          <div className="absolute inset-0 bg-white/80 backdrop-blur-[1px] flex flex-col items-center justify-center p-2">
+                            <div className="rotate-[-10deg] border-2 border-blue-600 text-blue-700 bg-white/95 px-3 py-1 rounded-lg font-black text-xs shadow-md tracking-widest flex items-center gap-1.5 uppercase">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-blue-600" />
+                              {isHindi ? 'दर्शन संपन्न' : 'VISITED'}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                      <div className="text-xs font-mono text-gray-400">{ticketData.token}</div>
+                    </div>
+
+                    {isTicketPassed ? (
+                      <div className="bg-blue-50/80 border border-blue-200 rounded-2xl p-3 text-center">
+                        <div className="text-xs font-black text-blue-900 flex items-center justify-center gap-1.5">
+                          <CheckCircle2 className="w-4 h-4 text-blue-600" />
+                          {isHindi ? "दर्शन संपन्न (Slot Completed)" : "Darshan Completed & Visited"}
+                        </div>
+                        <p className="text-[10px] text-blue-700/80 mt-0.5 leading-relaxed">
+                          {isHindi ? "इस दर्शन पास का निर्धारित समय पूर्ण हो चुका है। मंदिर पधारने के लिए धन्यवाद!" : "The scheduled time for this darshan has concluded. Thank you for visiting!"}
+                        </p>
                       </div>
                     ) : (
-                      <div className="text-sm font-black text-gray-700 bg-gray-100 px-3 py-1 rounded-full mt-1">
-                        {ticketData.status}
+                      <div className="bg-emerald-50/80 border border-emerald-200 rounded-2xl p-3 text-center">
+                        <div className="text-xs font-black text-emerald-900 flex items-center justify-center gap-1.5">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                          {isHindi ? "सक्रिय ई-दर्शन पास" : "Active e-Darshan Pass"}
+                        </div>
+                        <p className="text-[10px] text-emerald-700/80 mt-0.5 leading-relaxed">
+                          {isHindi ? "कृपया अपने निर्धारित स्लॉट पर मंदिर प्रवेश द्वार पर यह पास स्कैन कराएं।" : "Please present this pass at the temple entry gate during your slot."}
+                        </p>
                       </div>
                     )}
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <div className="text-xs font-bold text-gray-400 uppercase">{isHindi ? "तिथि" : "Date"}</div>
-                    <div className="text-md font-bold text-gray-800">{ticketData.date}</div>
-                  </div>
-                  <div>
-                    <div className="text-xs font-bold text-gray-400 uppercase">{isHindi ? "समय स्लॉट" : "Time Slot"}</div>
-                    <div className="text-md font-bold text-gray-800">{formatTime(ticketData.start_time)} - {formatTime(ticketData.end_time)}</div>
-                  </div>
-                </div>
-
-                <div className="mt-4 flex flex-col items-center">
-                  <div className="p-4 bg-gray-50 rounded-2xl border border-gray-100 mb-2">
-                    <QRCodeSVG value={`${window.location.origin}/?ticket=${ticketData.token}`} size={150} level="H" fgColor="#000000" />
-                  </div>
-                  <div className="text-xs font-mono text-gray-400">{ticketData.token}</div>
-                </div>
-              </>
+                  </>
+                );
+              })()
             )}
           </div>
           
@@ -722,8 +753,9 @@ function App() {
                                   <span className="font-bold text-gray-700 text-xs truncate group-hover:text-gray-900 transition-colors">
                                     {b.temple_name}
                                   </span>
-                                  <span className="text-[9px] font-bold text-gray-500 bg-gray-200 px-1.5 py-0.5 rounded uppercase">
-                                    {isHindi ? 'संपन्न' : 'COMPLETED'}
+                                  <span className="text-[9px] font-bold text-blue-700 bg-blue-100 px-1.5 py-0.5 rounded uppercase tracking-wider flex items-center gap-1">
+                                    <CheckCircle2 className="w-2.5 h-2.5 text-blue-600" />
+                                    {isHindi ? 'दर्शन संपन्न' : 'VISITED'}
                                   </span>
                                 </div>
                                 <div className="flex justify-between items-center mt-1">

@@ -20,11 +20,43 @@ try:
     from fastapi import Depends, HTTPException, status, WebSocket, WebSocketDisconnect, BackgroundTasks
     from typing import List
     from sqlalchemy.orm import Session
-    from datetime import datetime, date, time, timedelta
+    from datetime import datetime, date, time, timedelta, timezone
     import models, schemas
     from database import engine, get_db, SessionLocal
     from services.queue_engine import QueueBalancer
     import uuid
+
+    IST = timezone(timedelta(hours=5, minutes=30))
+
+    def get_ist_now():
+        return datetime.now(IST)
+
+    def is_slot_passed(slot):
+        if not slot:
+            return False
+        now = get_ist_now()
+        today = now.date()
+        current_time = now.time()
+        s_date = slot.date
+        if isinstance(s_date, str):
+            try:
+                s_date = datetime.strptime(s_date[:10], "%Y-%m-%d").date()
+            except Exception:
+                pass
+        s_end = slot.end_time
+        if isinstance(s_end, str):
+            try:
+                s_end = datetime.strptime(s_end[:8], "%H:%M:%S").time()
+            except Exception:
+                try:
+                    s_end = datetime.strptime(s_end[:5], "%H:%M").time()
+                except Exception:
+                    pass
+        if s_date < today:
+            return True
+        if s_date == today and s_end and s_end < current_time:
+            return True
+        return False
 
     # Database tables are already initialized in Supabase
     # models.Base.metadata.create_all(bind=engine)
@@ -90,16 +122,28 @@ try:
             temple = db.query(models.Temple).filter(models.Temple.id == slot.temple_id).first() if slot else None
             if not slot or not temple:
                 continue
-            display_status = "CONFIRMED" if b.status in ["IN_QUEUE", "CONFIRMED", "BOOKED"] else b.status
+            passed = is_slot_passed(slot)
+            if passed or b.status in ["SERVED", "COMPLETED", "VISITED"]:
+                display_status = "VISITED"
+                if b.status not in ["VISITED", "SERVED", "COMPLETED"]:
+                    try:
+                        b.status = "VISITED"
+                        db.commit()
+                    except Exception:
+                        db.rollback()
+            else:
+                display_status = "CONFIRMED"
+
             results.append({
                 "token": b.token_number,
                 "status": display_status,
+                "is_visited": (display_status == "VISITED"),
                 "temple_name": temple.name,
                 "city": temple.city,
-                "date": slot.date,
-                "start_time": slot.start_time,
-                "end_time": slot.end_time,
-                "booking_time": b.booking_time
+                "date": str(slot.date),
+                "start_time": str(slot.start_time),
+                "end_time": str(slot.end_time),
+                "booking_time": str(b.booking_time) if b.booking_time else ''
             })
         managed_temples = []
         if current_user.is_admin:
@@ -208,8 +252,9 @@ try:
             raise HTTPException(status_code=400, detail="Slot is full")
         
         # Check if slot date or time has already passed
-        today = datetime.now().date()
-        current_time = datetime.now().time()
+        now = get_ist_now()
+        today = now.date()
+        current_time = now.time()
         if slot.date < today or (slot.date == today and slot.end_time < current_time):
             raise HTTPException(status_code=400, detail="This slot time has already passed. Please select an upcoming slot.")
 
@@ -228,13 +273,20 @@ try:
 
     @app.get("/queue/status")
     def get_queue_status(temple_id: int = 1, db: Session = Depends(get_db)):
+        now = get_ist_now()
+        today = now.date()
+        current_time = now.time()
         online_count = db.query(models.Booking).join(models.TimeSlot).filter(
             models.TimeSlot.temple_id == temple_id, 
+            models.TimeSlot.date == today,
+            models.TimeSlot.end_time >= current_time,
             models.Booking.status.in_(["IN_QUEUE", "CONFIRMED"]), 
             models.Booking.is_online == True
         ).count()
         walkin_count = db.query(models.Booking).join(models.TimeSlot).filter(
             models.TimeSlot.temple_id == temple_id, 
+            models.TimeSlot.date == today,
+            models.TimeSlot.end_time >= current_time,
             models.Booking.status.in_(["IN_QUEUE", "CONFIRMED"]), 
             models.Booking.is_online == False
         ).count()
@@ -263,9 +315,9 @@ try:
             recommended_action = "Maintain current operations. Open all standard gates."
             
         # Feature: Dynamic Time-Slot Capacity Auto-Adjust
-        import datetime
-        current_time = datetime.datetime.now().time()
-        today = datetime.datetime.now().date()
+        now = get_ist_now()
+        current_time = now.time()
+        today = now.date()
         upcoming_slots = db.query(models.TimeSlot).filter(
             models.TimeSlot.temple_id == temple_id,
             models.TimeSlot.date == today,
@@ -409,18 +461,31 @@ def get_ticket(token_number: str, db: Session = Depends(get_db)):
     if not booking:
         raise HTTPException(status_code=404, detail='Ticket not found')
     slot = db.query(models.TimeSlot).filter(models.TimeSlot.id == booking.slot_id).first()
-    temple = db.query(models.Temple).filter(models.Temple.id == slot.temple_id).first()
+    temple = db.query(models.Temple).filter(models.Temple.id == slot.temple_id).first() if slot else None
     user = db.query(models.User).filter(models.User.id == booking.user_id).first() if booking.user_id else None
-    display_status = "CONFIRMED" if booking.status in ["IN_QUEUE", "CONFIRMED", "BOOKED"] else booking.status
+    
+    passed = is_slot_passed(slot)
+    if passed or booking.status in ["SERVED", "COMPLETED", "VISITED"]:
+        display_status = "VISITED"
+        if booking.status not in ["VISITED", "SERVED", "COMPLETED"]:
+            try:
+                booking.status = "VISITED"
+                db.commit()
+            except Exception:
+                db.rollback()
+    else:
+        display_status = "CONFIRMED"
+
     return {
         'token': booking.token_number,
         'status': display_status,
+        'is_visited': (display_status == "VISITED"),
         'temple_name': temple.name if temple else 'Temple',
         'city': temple.city if temple else '',
-        'date': slot.date if slot else '',
-        'start_time': slot.start_time if slot else '',
-        'end_time': slot.end_time if slot else '',
-        'booking_time': booking.booking_time,
+        'date': str(slot.date) if slot else '',
+        'start_time': str(slot.start_time) if slot else '',
+        'end_time': str(slot.end_time) if slot else '',
+        'booking_time': str(booking.booking_time) if booking.booking_time else '',
         'user_name': user.name if user else 'Walk-in Devotee'
     }
 
