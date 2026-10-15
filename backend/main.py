@@ -120,26 +120,38 @@ try:
         bookings = db.query(models.Booking).filter(models.Booking.user_id == current_user.id).all()
         results = []
         for b in bookings:
+            # Skip companion records so family bookings show as a single unified boarding pass
+            if "-P" in b.token_number:
+                continue
+
             slot = db.query(models.TimeSlot).filter(models.TimeSlot.id == b.slot_id).first()
             temple = db.query(models.Temple).filter(models.Temple.id == slot.temple_id).first() if slot else None
             if not slot or not temple:
                 continue
-            passed = is_slot_passed(slot)
-            if passed or b.status in ["SERVED", "COMPLETED", "VISITED"]:
-                display_status = "VISITED"
-                if b.status not in ["VISITED", "SERVED", "COMPLETED"]:
-                    try:
-                        b.status = "VISITED"
-                        db.commit()
-                    except Exception:
-                        db.rollback()
+
+            if b.status == "CANCELLED":
+                display_status = "CANCELLED"
             else:
-                display_status = "CONFIRMED"
+                passed = is_slot_passed(slot)
+                if passed or b.status in ["SERVED", "COMPLETED", "VISITED"]:
+                    display_status = "VISITED"
+                    if b.status not in ["VISITED", "SERVED", "COMPLETED"]:
+                        try:
+                            b.status = "VISITED"
+                            db.commit()
+                        except Exception:
+                            db.rollback()
+                else:
+                    display_status = "CONFIRMED"
+
+            comp_count = db.query(models.Booking).filter(models.Booking.token_number.like(f"{b.token_number}-P%")).count()
 
             results.append({
                 "token": b.token_number,
                 "status": display_status,
                 "is_visited": (display_status == "VISITED"),
+                "is_cancelled": (display_status == "CANCELLED"),
+                "total_devotees": 1 + comp_count,
                 "temple_name": temple.name,
                 "city": temple.city,
                 "date": str(slot.date),
@@ -254,8 +266,10 @@ try:
 
         if not slot:
             raise HTTPException(status_code=404, detail="Slot not found")
-        if slot.availability <= 0:
-            raise HTTPException(status_code=400, detail="Slot is full")
+        
+        dev_count = max(1, min(5, int(booking.devotee_count or 1)))
+        if slot.availability < dev_count:
+            raise HTTPException(status_code=400, detail=f"Only {slot.availability} spot(s) remaining in this slot. Please reduce number of devotees.")
         
         # Check if slot date or time has already passed
         now = get_ist_now()
@@ -273,9 +287,48 @@ try:
             status="CONFIRMED"
         )
         db.add(db_booking)
+
+        # If family / group booking, reserve additional spots in slot
+        for i in range(2, dev_count + 1):
+            comp_token = f"{token}-P{i}"
+            comp_booking = models.Booking(
+                user_id=current_user.id,
+                slot_id=booking.slot_id,
+                is_online=booking.is_online,
+                token_number=comp_token,
+                status="CONFIRMED"
+            )
+            db.add(comp_booking)
+
         db.commit()
         db.refresh(db_booking)
         return db_booking
+
+    @app.post("/bookings/{token_number}/cancel")
+    def cancel_booking(token_number: str, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+        clean_token = token_number.strip().upper()
+        booking = db.query(models.Booking).filter(models.Booking.token_number == clean_token).first()
+        if not booking:
+            raise HTTPException(status_code=404, detail="Booking not found")
+
+        if booking.user_id != current_user.id and not getattr(current_user, 'is_admin', False):
+            raise HTTPException(status_code=403, detail="Not authorized to cancel this booking")
+
+        if booking.status in ["VISITED", "SERVED", "COMPLETED"]:
+            raise HTTPException(status_code=400, detail="Cannot cancel a pass that has already completed Darshan")
+
+        if booking.status == "CANCELLED":
+            return {"success": True, "message": "Booking is already cancelled"}
+
+        booking.status = "CANCELLED"
+        # Also cancel companion family records
+        companions = db.query(models.Booking).filter(models.Booking.token_number.like(f"{clean_token}-P%")).all()
+        for comp in companions:
+            comp.status = "CANCELLED"
+
+        db.commit()
+        return {"success": True, "message": "Booking successfully cancelled. Slot has been freed."}
+
 
     @app.get("/queue/status")
     def get_queue_status(temple_id: int = 1, db: Session = Depends(get_db)):
@@ -337,11 +390,11 @@ try:
             date_sql = text("""
                 SELECT 
                     ts.date::text as d,
-                    COUNT(*) as total,
+                    COUNT(CASE WHEN b.status != 'CANCELLED' THEN 1 END) as total,
                     COUNT(CASE WHEN b.status IN ('VISITED', 'SERVED', 'COMPLETED') THEN 1 END) as visited,
-                    COUNT(CASE WHEN b.status NOT IN ('VISITED', 'SERVED', 'COMPLETED') THEN 1 END) as in_queue,
-                    COUNT(CASE WHEN b.is_online = true THEN 1 END) as online_c,
-                    COUNT(CASE WHEN b.is_online = false THEN 1 END) as walkin_c
+                    COUNT(CASE WHEN b.status NOT IN ('VISITED', 'SERVED', 'COMPLETED', 'CANCELLED') THEN 1 END) as in_queue,
+                    COUNT(CASE WHEN b.is_online = true AND b.status != 'CANCELLED' THEN 1 END) as online_c,
+                    COUNT(CASE WHEN b.is_online = false AND b.status != 'CANCELLED' THEN 1 END) as walkin_c
                 FROM bookings b
                 JOIN time_slots ts ON b.slot_id = ts.id
                 WHERE ts.temple_id = :tid
@@ -585,22 +638,30 @@ def get_ticket(token_number: str, db: Session = Depends(get_db)):
     temple = db.query(models.Temple).filter(models.Temple.id == slot.temple_id).first() if slot else None
     user = db.query(models.User).filter(models.User.id == booking.user_id).first() if booking.user_id else None
     
-    passed = is_slot_passed(slot)
-    if passed or booking.status in ["SERVED", "COMPLETED", "VISITED"]:
-        display_status = "VISITED"
-        if booking.status not in ["VISITED", "SERVED", "COMPLETED"]:
-            try:
-                booking.status = "VISITED"
-                db.commit()
-            except Exception:
-                db.rollback()
+    if booking.status == "CANCELLED":
+        display_status = "CANCELLED"
     else:
-        display_status = "CONFIRMED"
+        passed = is_slot_passed(slot)
+        if passed or booking.status in ["SERVED", "COMPLETED", "VISITED"]:
+            display_status = "VISITED"
+            if booking.status not in ["VISITED", "SERVED", "COMPLETED"]:
+                try:
+                    booking.status = "VISITED"
+                    db.commit()
+                except Exception:
+                    db.rollback()
+        else:
+            display_status = "CONFIRMED"
+
+    companion_count = db.query(models.Booking).filter(models.Booking.token_number.like(f"{booking.token_number}-P%")).count()
+    total_devotees = 1 + companion_count
 
     return {
         'token': booking.token_number,
         'status': display_status,
         'is_visited': (display_status == "VISITED"),
+        'is_cancelled': (display_status == "CANCELLED"),
+        'total_devotees': total_devotees,
         'temple_name': temple.name if temple else 'Temple',
         'city': temple.city if temple else '',
         'date': str(slot.date) if slot else '',
@@ -619,6 +680,9 @@ def verify_gate_token(req: GateVerifyRequest, db: Session = Depends(get_db)):
     booking = db.query(models.Booking).filter(models.Booking.token_number == clean_token).first()
     if not booking:
         raise HTTPException(status_code=404, detail=f"Token '{clean_token}' not found. Invalid entry pass.")
+
+    if booking.status == "CANCELLED":
+        raise HTTPException(status_code=400, detail=f"Token '{clean_token}' was cancelled. Entry is not permitted.")
 
     slot = db.query(models.TimeSlot).filter(models.TimeSlot.id == booking.slot_id).first()
     temple = db.query(models.Temple).filter(models.Temple.id == slot.temple_id).first() if slot else None

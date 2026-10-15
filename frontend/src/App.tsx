@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Users, Clock, AlertTriangle, CalendarCheck, Bell, Cloud, Thermometer, ShieldCheck, CheckCircle2, QrCode, Menu, X, Camera, MapPin, Grid, Heart, Car, Search, Languages, Upload, Copy, Check, FileText, ArrowLeft, ArrowRight, Printer, Shield, Sparkles, Info, Ticket, Lock } from 'lucide-react';
+import { Users, Clock, AlertTriangle, CalendarCheck, Bell, Cloud, Thermometer, ShieldCheck, CheckCircle2, QrCode, Menu, X, Camera, MapPin, Grid, Heart, Car, Search, Languages, Upload, Copy, Check, FileText, ArrowLeft, ArrowRight, Printer, Shield, Sparkles, Info, Ticket, Lock, Eye, EyeOff } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { supabase } from './supabaseClient';
 
@@ -94,6 +94,20 @@ function App() {
   const [activeTab, setActiveTab] = useState(localStorage.getItem('activeTab') || 'home'); // 'home' | 'devotee' | 'staff' | 'admin'
   const [isAdmin, setIsAdmin] = useState(false);
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
+  const [loginEmail, setLoginEmail] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
+  const [showLoginPassword, setShowLoginPassword] = useState(false);
+  const [regName, setRegName] = useState('');
+  const [regEmail, setRegEmail] = useState('');
+  const [regPassword, setRegPassword] = useState('');
+  const [showRegPassword, setShowRegPassword] = useState(false);
+  const [authErrorMessage, setAuthErrorMessage] = useState<string | null>(null);
+  const [authSuccessMessage, setAuthSuccessMessage] = useState<string | null>(null);
+  const [isAuthSubmitting, setIsAuthSubmitting] = useState(false);
+
+  const [devoteeCount, setDevoteeCount] = useState<number>(1);
+  const [cancelStatusMsg, setCancelStatusMsg] = useState<string | null>(null);
+  const [isCancellingBooking, setIsCancellingBooking] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [staffSelectedTemple, setStaffSelectedTemple] = useState<number | null>(null);
 
@@ -547,7 +561,8 @@ function App() {
       setBookingMessage('Booking...');
       const res = await axios.post(`${API_URL}/bookings/`, {
         slot_id: selectedSlot,
-        is_online: true
+        is_online: true,
+        devotee_count: devoteeCount
       }, {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -565,6 +580,7 @@ function App() {
         start_time: matchedSlot?.start_time || '',
         end_time: matchedSlot?.end_time || '',
         user_name: userDashboard?.user?.name || 'Devotee',
+        total_devotees: devoteeCount,
         status: 'CONFIRMED'
       };
       setBookedTicketDetails(passInfo);
@@ -575,6 +591,33 @@ function App() {
       fetchUserDashboard(); // Refresh devotee dashboard bookings
     } catch (e: any) {
       setBookingMessage(`Failed: ${e.response?.data?.detail || e.message}`);
+    }
+  };
+
+  const handleCancelBooking = async (tokenToCancel: string) => {
+    if (!tokenToCancel) return;
+    const confirmCancel = window.confirm(
+      isHindi 
+        ? "क्या आप वाकई यह दर्शन बुकिंग रद्द करना चाहते हैं? इससे आपका स्लॉट अन्य श्रद्धालुओं के लिए उपलब्ध हो जाएगा।" 
+        : "Are you sure you want to cancel this Darshan booking? This will release your time slot for other waiting devotees."
+    );
+    if (!confirmCancel) return;
+
+    setIsCancellingBooking(true);
+    const token = localStorage.getItem('token');
+    try {
+      const res = await axios.post(`${API_URL}/bookings/${tokenToCancel}/cancel`, {}, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setCancelStatusMsg(res.data.message || "Booking successfully cancelled.");
+      await fetchUserDashboard();
+      await fetchSlots();
+      if (staffSelectedTemple) fetchQueueStatus();
+      setTimeout(() => setCancelStatusMsg(null), 4000);
+    } catch (err: any) {
+      alert(err.response?.data?.detail || "Could not cancel booking.");
+    } finally {
+      setIsCancellingBooking(false);
     }
   };
 
@@ -1041,8 +1084,13 @@ function App() {
                       <div className="text-[11px] font-black uppercase tracking-wider text-gray-400">
                         {isHindi ? "श्रद्धालु का नाम / DEVOTEE NAME" : "DEVOTEE NAME"}
                       </div>
-                      <div className="text-2xl font-black text-gray-900 tracking-tight mt-0.5">
-                        {ticketData.user_name}
+                      <div className="text-2xl font-black text-gray-900 tracking-tight mt-0.5 flex flex-wrap items-center gap-2">
+                        <span>{ticketData.user_name}</span>
+                        {ticketData.total_devotees > 1 && (
+                          <span className="text-xs font-black px-2.5 py-0.5 rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-800">
+                            👥 {ticketData.total_devotees} {isHindi ? "श्रद्धालु" : "Devotees"}
+                          </span>
+                        )}
                       </div>
                       <div className="inline-flex items-center gap-1.5 text-xs font-bold text-orange-800 bg-orange-50 border border-orange-200 px-2.5 py-0.5 rounded-lg mt-1.5">
                         <Ticket className="w-3.5 h-3.5 text-orange-600" />
@@ -1054,7 +1102,12 @@ function App() {
                       <div className="text-[11px] font-black uppercase tracking-wider text-gray-400">
                         {isHindi ? "पास स्थिति / PASS STATUS" : "STATUS"}
                       </div>
-                      {isTicketPassed ? (
+                      {ticketData.is_cancelled || ticketData.status === 'CANCELLED' ? (
+                        <div className="inline-flex items-center gap-1.5 text-xs font-black text-red-700 bg-red-50 border-2 border-red-400 px-3 py-1 rounded-xl mt-1 shadow-sm uppercase tracking-wider">
+                          <span>✕</span>
+                          <span>{isHindi ? "रद्द किया गया (CANCELLED)" : "CANCELLED"}</span>
+                        </div>
+                      ) : isTicketPassed ? (
                         <div className="inline-flex items-center gap-1.5 text-xs font-black text-blue-700 bg-blue-50 border-2 border-blue-400 px-3 py-1 rounded-xl mt-1 shadow-sm uppercase tracking-wider">
                           <CheckCircle2 className="w-4 h-4 text-blue-600" />
                           <span>{isHindi ? "दर्शन संपन्न (VISITED)" : "VISITED"}</span>
@@ -1407,80 +1460,186 @@ function App() {
                     {authMode === 'login' ? 'Please log in to make a genuine slot booking.' : 'Register to book your Darshan slots.'}
                   </p>
                   
-                  {authMode === 'login' ? (
-                    <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-left-4 duration-300">
-                      <input id="loginEmail" type="email" placeholder="Email Address" className="p-4 border border-orange-200/50 rounded-xl bg-white shadow-sm focus:ring-2 focus:ring-orange-500 outline-none transition" />
-                      <input id="loginPassword" type="password" placeholder="Password" className="p-4 border border-orange-200/50 rounded-xl bg-white shadow-sm focus:ring-2 focus:ring-orange-500 outline-none transition" />
-                      
-                      <button 
-                        onClick={async () => {
-                          const email = (document.getElementById('loginEmail') as HTMLInputElement).value;
-                          const pwd = (document.getElementById('loginPassword') as HTMLInputElement).value;
-                          if (!email || !pwd) return alert("Please enter both an email and a password.");
-                          try {
-                            const { data, error } = await supabase.auth.signInWithPassword({ email, password: pwd });
-                            if (error) throw error;
-                            const token = data.session?.access_token || '';
-                            localStorage.setItem('token', token);
+                  {/* In-app Toast / Banner for Errors and Success */}
+                  {authErrorMessage && (
+                    <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl text-xs font-bold text-red-800 flex items-center justify-between gap-2 animate-in fade-in">
+                      <div className="flex items-center gap-2">
+                        <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />
+                        <span>{authErrorMessage}</span>
+                      </div>
+                      <button type="button" onClick={() => setAuthErrorMessage(null)} className="text-red-500 hover:text-red-700 text-xs">✕</button>
+                    </div>
+                  )}
 
-                            // Detect role to route accurately
-                            try {
-                              const dashRes = await axios.get(`${API_URL}/users/me/dashboard`, {
-                                headers: { Authorization: `Bearer ${token}` }
-                              });
-                              if (dashRes.data.user?.is_admin) {
-                                localStorage.setItem('activeTab', 'admin');
-                              } else {
-                                localStorage.setItem('activeTab', 'devotee');
-                              }
-                            } catch {
-                              localStorage.setItem('activeTab', 'devotee');
-                            }
-                            window.location.reload();
-                          } catch(e: any) { alert("Login Failed: " + (e.message)); }
-                        }}
-                        className="bg-orange-600 hover:bg-orange-700 text-white font-bold py-4 rounded-xl shadow-md transition-all active:scale-95"
-                      >
-                        {isHindi ? "लॉग इन करें" : "Log In"}
-                      </button>
-                      <p className="mt-4 text-sm text-gray-600">
-                        {isHindi ? "खाता नहीं है?" : "Don't have an account?"} <button onClick={() => setAuthMode('register')} className="text-orange-600 font-bold hover:underline">{isHindi ? "यहाँ पंजीकरण करें" : "Register here"}</button>
-                      </p>
+                  {authSuccessMessage && (
+                    <div className="mb-4 p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs font-bold text-emerald-800 flex items-center gap-2 animate-in fade-in">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <span>{authSuccessMessage}</span>
                     </div>
-                  ) : (
-                    <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-right-4 duration-300">
-                      <input id="regName" placeholder={isHindi ? "पूरा नाम" : "Full Name"} className="p-4 border border-orange-200/50 rounded-xl bg-white shadow-sm focus:ring-2 focus:ring-orange-500 outline-none transition" />
-                      <input id="regEmail" type="email" placeholder={isHindi ? "ईमेल पता" : "Email Address"} className="p-4 border border-orange-200/50 rounded-xl bg-white shadow-sm focus:ring-2 focus:ring-orange-500 outline-none transition" />
-                      <input id="regPassword" type="password" placeholder={isHindi ? "पासवर्ड" : "Password"} className="p-4 border border-orange-200/50 rounded-xl bg-white shadow-sm focus:ring-2 focus:ring-orange-500 outline-none transition" />
+                  )}
+
+                  {authMode === 'login' ? (
+                    <form 
+                      onSubmit={async (e) => {
+                        e.preventDefault();
+                        if (!loginEmail.trim() || !loginPassword) {
+                          setAuthErrorMessage(isHindi ? "कृपया ईमेल और पासवर्ड दोनों दर्ज करें।" : "Please enter both an email and a password.");
+                          return;
+                        }
+                        setIsAuthSubmitting(true);
+                        setAuthErrorMessage(null);
+                        try {
+                          const { data, error } = await supabase.auth.signInWithPassword({ 
+                            email: loginEmail.trim(), 
+                            password: loginPassword 
+                          });
+                          if (error) throw error;
+                          const token = data.session?.access_token || '';
+                          localStorage.setItem('token', token);
+
+                          // In-place refresh without white page reload
+                          await fetchUserDashboard();
+                          setAuthSuccessMessage(isHindi ? "लॉगिन सफल! स्वागत है।" : "Login Successful! Welcome back.");
+                          setTimeout(() => setAuthSuccessMessage(null), 3000);
+                        } catch(err: any) {
+                          setAuthErrorMessage(err.message || "Login failed. Please check credentials.");
+                        } finally {
+                          setIsAuthSubmitting(false);
+                        }
+                      }}
+                      className="flex flex-col gap-4 animate-in fade-in slide-in-from-left-4 duration-300"
+                    >
+                      <input 
+                        type="email" 
+                        value={loginEmail}
+                        onChange={(e) => setLoginEmail(e.target.value)}
+                        placeholder={isHindi ? "ईमेल पता (Email Address)" : "Email Address"} 
+                        className="p-4 border border-orange-200/50 rounded-xl bg-white shadow-sm focus:ring-2 focus:ring-orange-500 outline-none transition text-sm font-medium" 
+                        required
+                      />
+                      
+                      <div className="relative flex items-center">
+                        <input 
+                          type={showLoginPassword ? "text" : "password"} 
+                          value={loginPassword}
+                          onChange={(e) => setLoginPassword(e.target.value)}
+                          placeholder={isHindi ? "पासवर्ड (Password)" : "Password"} 
+                          className="w-full p-4 pr-12 border border-orange-200/50 rounded-xl bg-white shadow-sm focus:ring-2 focus:ring-orange-500 outline-none transition text-sm font-medium" 
+                          required
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowLoginPassword(!showLoginPassword)}
+                          className="absolute right-4 text-gray-400 hover:text-gray-700 transition"
+                          title={showLoginPassword ? "Hide password" : "Show password"}
+                        >
+                          {showLoginPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                        </button>
+                      </div>
                       
                       <button 
-                        onClick={async () => {
-                          const name = (document.getElementById('regName') as HTMLInputElement).value;
-                          const email = (document.getElementById('regEmail') as HTMLInputElement).value;
-                          const pwd = (document.getElementById('regPassword') as HTMLInputElement).value;
-                          
-                          if (!name || !email || !pwd) return alert("Please fill all fields.");
-                          try {
-                            const { data, error } = await supabase.auth.signUp({ email, password: pwd, options: { data: { name, role: 'devotee' } } });
-                            if (error) throw error;
-                            
-                            const { data: signInData, error: signInErr } = await supabase.auth.signInWithPassword({ email, password: pwd });
-                            if (signInErr) throw signInErr;
-                            localStorage.setItem('token', signInData.session?.access_token || '');
-                            localStorage.setItem('activeTab', 'devotee');
-                            alert(isHindi ? "श्रद्धालु पंजीकरण सफल! अब आप दर्शन बुक कर सकते हैं।" : "Devotee Registration Successful! You can now book tickets.");
-                            window.location.reload();
-                          } catch(e: any) { alert("Registration Failed: " + (e.message)); }
-                        }}
-                        className="bg-gray-900 hover:bg-black text-white font-bold py-4 rounded-xl shadow-md transition-all active:scale-95 mt-2"
+                        type="submit"
+                        disabled={isAuthSubmitting}
+                        className="bg-orange-600 hover:bg-orange-700 disabled:opacity-50 text-white font-bold py-4 rounded-xl shadow-md transition-all active:scale-95 flex items-center justify-center gap-2"
                       >
-                        {isHindi ? "श्रद्धालु खाता बनाएं" : "Create Devotee Account"}
+                        {isAuthSubmitting ? (
+                          <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        ) : (
+                          <span>{isHindi ? "लॉग इन करें" : "Log In"}</span>
+                        )}
+                      </button>
+
+                      <p className="mt-2 text-sm text-gray-600">
+                        {isHindi ? "खाता नहीं है?" : "Don't have an account?"} <button type="button" onClick={() => { setAuthMode('register'); setAuthErrorMessage(null); }} className="text-orange-600 font-bold hover:underline">{isHindi ? "यहाँ पंजीकरण करें" : "Register here"}</button>
+                      </p>
+                    </form>
+                  ) : (
+                    <form 
+                      onSubmit={async (e) => {
+                        e.preventDefault();
+                        if (!regName.trim() || !regEmail.trim() || !regPassword) {
+                          setAuthErrorMessage(isHindi ? "कृपया सभी विवरण भरें।" : "Please fill in all registration fields.");
+                          return;
+                        }
+                        setIsAuthSubmitting(true);
+                        setAuthErrorMessage(null);
+                        try {
+                          const { data, error } = await supabase.auth.signUp({ 
+                            email: regEmail.trim(), 
+                            password: regPassword, 
+                            options: { data: { name: regName.trim(), role: 'devotee' } } 
+                          });
+                          if (error) throw error;
+                          
+                          const { data: signInData, error: signInErr } = await supabase.auth.signInWithPassword({ 
+                            email: regEmail.trim(), 
+                            password: regPassword 
+                          });
+                          if (signInErr) throw signInErr;
+                          localStorage.setItem('token', signInData.session?.access_token || '');
+                          
+                          // In-place refresh without white page reload
+                          await fetchUserDashboard();
+                          setAuthSuccessMessage(isHindi ? "श्रद्धालु पंजीकरण सफल! आप अब दर्शन बुक कर सकते हैं।" : "Registration Successful! Welcome to Smart Temple.");
+                          setTimeout(() => setAuthSuccessMessage(null), 3000);
+                        } catch(err: any) {
+                          setAuthErrorMessage(err.message || "Registration failed. Please try again.");
+                        } finally {
+                          setIsAuthSubmitting(false);
+                        }
+                      }}
+                      className="flex flex-col gap-4 animate-in fade-in slide-in-from-right-4 duration-300"
+                    >
+                      <input 
+                        value={regName}
+                        onChange={(e) => setRegName(e.target.value)}
+                        placeholder={isHindi ? "पूरा नाम (Full Name)" : "Full Name"} 
+                        className="p-4 border border-orange-200/50 rounded-xl bg-white shadow-sm focus:ring-2 focus:ring-orange-500 outline-none transition text-sm font-medium" 
+                        required
+                      />
+                      <input 
+                        type="email" 
+                        value={regEmail}
+                        onChange={(e) => setRegEmail(e.target.value)}
+                        placeholder={isHindi ? "ईमेल पता (Email Address)" : "Email Address"} 
+                        className="p-4 border border-orange-200/50 rounded-xl bg-white shadow-sm focus:ring-2 focus:ring-orange-500 outline-none transition text-sm font-medium" 
+                        required
+                      />
+                      <div className="relative flex items-center">
+                        <input 
+                          type={showRegPassword ? "text" : "password"} 
+                          value={regPassword}
+                          onChange={(e) => setRegPassword(e.target.value)}
+                          placeholder={isHindi ? "पासवर्ड (Password)" : "Password"} 
+                          className="w-full p-4 pr-12 border border-orange-200/50 rounded-xl bg-white shadow-sm focus:ring-2 focus:ring-orange-500 outline-none transition text-sm font-medium" 
+                          required
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowRegPassword(!showRegPassword)}
+                          className="absolute right-4 text-gray-400 hover:text-gray-700 transition"
+                          title={showRegPassword ? "Hide password" : "Show password"}
+                        >
+                          {showRegPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                        </button>
+                      </div>
+                      
+                      <button 
+                        type="submit"
+                        disabled={isAuthSubmitting}
+                        className="bg-gray-900 hover:bg-black disabled:opacity-50 text-white font-bold py-4 rounded-xl shadow-md transition-all active:scale-95 mt-2 flex items-center justify-center gap-2"
+                      >
+                        {isAuthSubmitting ? (
+                          <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        ) : (
+                          <span>{isHindi ? "श्रद्धालु खाता बनाएं" : "Create Devotee Account"}</span>
+                        )}
                       </button>
                       
-                      <p className="mt-4 text-sm text-gray-600">
-                        {isHindi ? "पहले से खाता है?" : "Already have an account?"} <button onClick={() => setAuthMode('login')} className="text-orange-600 font-bold hover:underline">{isHindi ? "लॉगिन करें" : "Login here"}</button>
+                      <p className="mt-2 text-sm text-gray-600">
+                        {isHindi ? "पहले से खाता है?" : "Already have an account?"} <button type="button" onClick={() => { setAuthMode('login'); setAuthErrorMessage(null); }} className="text-orange-600 font-bold hover:underline">{isHindi ? "लॉगिन करें" : "Login here"}</button>
                       </p>
-                    </div>
+                    </form>
                   )}
                 </div>
                 </>
@@ -1495,13 +1654,19 @@ function App() {
                           <h3 className="text-2xl font-black tracking-tight">{userDashboard?.user?.name || 'Devotee'}</h3>
                           <p className="text-orange-100 font-medium text-sm mt-1">{userDashboard?.user?.email}</p>
                         </div>
-                        <button onClick={() => { 
-                          localStorage.removeItem('token'); 
-                          localStorage.removeItem('adminToken');
-                          localStorage.removeItem('activeTab');
-                          setIsAdmin(false);
-                          window.location.reload(); 
-                        }} className="text-xs font-bold text-orange-200 hover:text-white bg-orange-700/30 px-3 py-1.5 rounded-full transition-colors">{isHindi ? "लॉग आउट" : "Logout"}</button>
+                        <button 
+                          onClick={async () => { 
+                            localStorage.removeItem('token'); 
+                            localStorage.removeItem('adminToken');
+                            localStorage.removeItem('activeTab');
+                            setIsAdmin(false);
+                            setUserDashboard(null);
+                            await supabase.auth.signOut().catch(() => {});
+                          }} 
+                          className="text-xs font-bold text-orange-200 hover:text-white bg-orange-700/30 px-3 py-1.5 rounded-full transition-colors active:scale-95"
+                        >
+                          {isHindi ? "लॉग आउट" : "Logout"}
+                        </button>
                       </div>
                       <div className="grid grid-cols-2 gap-2.5">
                         <div className="bg-white/20 p-3 rounded-xl backdrop-blur-sm border border-white/20">
@@ -1525,6 +1690,14 @@ function App() {
                           {allUserBookings.length} {isHindi ? "कुल" : "Total"}
                         </span>
                       </div>
+
+                      {/* Cancel Booking Status Banner */}
+                      {cancelStatusMsg && (
+                        <div className="mb-3 p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl text-xs font-bold text-emerald-800 flex items-center gap-2 animate-in fade-in">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                          <span>{cancelStatusMsg}</span>
+                        </div>
+                      )}
 
                       {/* 2 Tabs: Active / Upcoming vs Past History */}
                       <div className="grid grid-cols-2 gap-1.5 bg-gray-100 p-1 rounded-xl mb-4 text-xs font-bold">
@@ -1620,11 +1793,25 @@ function App() {
                                 </div>
                                 <div className="flex justify-between items-center pt-2 border-t border-emerald-100 text-[11px]">
                                   <span className="font-mono font-bold text-emerald-800 bg-emerald-100/70 px-2 py-0.5 rounded text-[10px]">
-                                    {b.token}
+                                    {b.token} {b.total_devotees > 1 ? `(👥 ${b.total_devotees})` : ''}
                                   </span>
-                                  <span className="text-[11px] text-emerald-700 font-black group-hover:translate-x-0.5 transition-transform flex items-center gap-1">
-                                    {isHindi ? 'ई-पास देखें' : 'View e-Ticket'} &rarr;
-                                  </span>
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleCancelBooking(b.token);
+                                      }}
+                                      disabled={isCancellingBooking}
+                                      className="text-[10px] font-bold text-red-600 hover:text-red-700 hover:bg-red-50 px-2 py-0.5 rounded border border-red-200 transition"
+                                      title={isHindi ? "दर्शन स्लॉट रद्द करें" : "Cancel booking"}
+                                    >
+                                      {isHindi ? "रद्द करें" : "Cancel"}
+                                    </button>
+                                    <span className="text-[11px] text-emerald-700 font-black group-hover:translate-x-0.5 transition-transform flex items-center gap-1">
+                                      {isHindi ? 'ई-पास देखें' : 'View e-Ticket'} &rarr;
+                                    </span>
+                                  </div>
                                 </div>
                               </div>
                             ))
@@ -1651,14 +1838,22 @@ function App() {
                                   <span className="font-bold text-gray-700 text-xs truncate group-hover:text-gray-900 transition-colors">
                                     {b.temple_name}
                                   </span>
-                                  <span className="text-[9px] font-bold text-blue-700 bg-blue-100 px-1.5 py-0.5 rounded uppercase tracking-wider flex items-center gap-1">
-                                    <CheckCircle2 className="w-2.5 h-2.5 text-blue-600" />
-                                    {isHindi ? 'दर्शन संपन्न' : 'VISITED'}
-                                  </span>
+                                  {b.is_cancelled || b.status === 'CANCELLED' ? (
+                                    <span className="text-[9px] font-bold text-red-700 bg-red-100 px-1.5 py-0.5 rounded uppercase tracking-wider flex items-center gap-1">
+                                      <span>✕</span>
+                                      {isHindi ? 'रद्द' : 'CANCELLED'}
+                                    </span>
+                                  ) : (
+                                    <span className="text-[9px] font-bold text-blue-700 bg-blue-100 px-1.5 py-0.5 rounded uppercase tracking-wider flex items-center gap-1">
+                                      <CheckCircle2 className="w-2.5 h-2.5 text-blue-600" />
+                                      {isHindi ? 'दर्शन संपन्न' : 'VISITED'}
+                                    </span>
+                                  )}
                                 </div>
                                 <div className="flex justify-between items-center mt-1">
                                   <div className="text-[11px] font-medium text-gray-400">
                                     {b.date} • {b.start_time ? String(b.start_time).substring(0,5) : ""}
+                                    {b.total_devotees > 1 ? ` • 👥 ${b.total_devotees}` : ''}
                                   </div>
                                   <div className="text-[10px] font-mono font-medium text-gray-400 group-hover:text-orange-600 transition-colors">
                                     {b.token} &rarr;
@@ -1935,6 +2130,11 @@ function App() {
                                   <div className="text-sm font-black text-gray-800">
                                     {bookedTicketDetails?.user_name || userDashboard?.user?.name || 'Devotee'}
                                   </div>
+                                  {(bookedTicketDetails?.total_devotees > 1 || devoteeCount > 1) && (
+                                    <div className="text-[10px] font-black text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded mt-0.5 inline-block">
+                                      👥 {bookedTicketDetails?.total_devotees || devoteeCount} {isHindi ? "श्रद्धालु" : "Devotees"}
+                                    </div>
+                                  )}
                                 </div>
                               </div>
 
@@ -2137,13 +2337,44 @@ function App() {
                               })()}
                             </div>
 
+                            {/* Devotee Quantity / Family Members Selector */}
+                            <div className="bg-orange-50/70 border border-orange-200 rounded-xl p-3 my-3">
+                              <div className="flex justify-between items-center mb-2">
+                                <span className="text-xs font-black text-gray-800 flex items-center gap-1.5">
+                                  <Users className="w-4 h-4 text-orange-600" />
+                                  <span>{isHindi ? "श्रद्धालुओं की संख्या (Family / Group)" : "Number of Devotees (Family / Group)"}</span>
+                                </span>
+                                <span className="text-[11px] font-bold text-orange-700 bg-orange-100 px-2 py-0.5 rounded-full">
+                                  {devoteeCount} {isHindi ? "श्रद्धालु" : (devoteeCount === 1 ? "Person" : "Persons")}
+                                </span>
+                              </div>
+                              <div className="grid grid-cols-5 gap-1.5">
+                                {[1, 2, 3, 4, 5].map((cnt) => (
+                                  <button
+                                    key={cnt}
+                                    type="button"
+                                    onClick={() => setDevoteeCount(cnt)}
+                                    className={`py-2 rounded-xl font-black text-xs transition-all ${
+                                      devoteeCount === cnt
+                                        ? 'bg-orange-600 text-white shadow-md scale-[1.02]'
+                                        : 'bg-white text-gray-700 border border-orange-200 hover:bg-orange-100'
+                                    }`}
+                                  >
+                                    {cnt} {cnt === 1 ? '👤' : '👥'}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+
                             <button 
                               onClick={handleBooking}
                               disabled={!selectedSlot}
                               className={`w-full py-4 rounded-xl font-black uppercase tracking-widest shadow-xl transition-all mt-auto border-b-4
                                 ${!selectedSlot ? 'bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed shadow-none' : 'bg-orange-600 border-orange-800 text-white hover:bg-orange-500 hover:border-orange-700 active:scale-95'}`}
                             >
-                              {isHindi ? "दर्शन स्लॉट बुक करें" : "Confirm Booking"}
+                              {isHindi 
+                                ? (devoteeCount > 1 ? `${devoteeCount} श्रद्धालुओं का दर्शन स्लॉट बुक करें` : "दर्शन स्लॉट बुक करें") 
+                                : `Confirm Booking for ${devoteeCount} Devotee${devoteeCount > 1 ? 's' : ''}`}
                             </button>
                             {bookingMessage && <p className="text-red-500 text-center text-sm font-bold mt-4">{bookingMessage}</p>}
                           </div>

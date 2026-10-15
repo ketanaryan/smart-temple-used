@@ -66,6 +66,8 @@ class TimeSlot(TimeSlotBase):
 class BookingBase(BaseModel):
     slot_id: int
     is_online: bool = True
+    devotee_count: Optional[int] = 1
+    accompanying_names: Optional[List[str]] = None
 
 class BookingCreate(BookingBase):
     pass
