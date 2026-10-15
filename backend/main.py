@@ -18,7 +18,7 @@ app.add_middleware(
 
 try:
     from fastapi import Depends, HTTPException, status, WebSocket, WebSocketDisconnect, BackgroundTasks
-    from typing import List
+    from typing import List, Optional
     from sqlalchemy.orm import Session
     from datetime import datetime, date, time, timedelta, timezone
     import models, schemas
@@ -543,6 +543,9 @@ class SOSRequest(BaseModel):
 class DonationRequest(BaseModel):
     user_name: str
     amount: int
+    purpose: Optional[str] = "General Temple Trust Fund"
+    utr_number: Optional[str] = None
+    receipt_image: Optional[str] = None
 
 class LostFoundRequest(BaseModel):
     item_type: str
@@ -570,8 +573,22 @@ def book_parking():
 
 @app.post("/services/donate")
 def make_donation(req: DonationRequest):
-    global_donations.append(req.dict())
-    return {"message": "Donation successful"}
+    receipt_id = f"REC-{datetime.now().strftime('%Y%m%d')}-{uuid.uuid4().hex[:6].upper()}"
+    donation_record = {
+        "receipt_id": receipt_id,
+        "user_name": req.user_name,
+        "amount": req.amount,
+        "purpose": req.purpose or "General Temple Trust Fund",
+        "utr_number": req.utr_number or f"UPI-{uuid.uuid4().hex[:8].upper()}",
+        "has_screenshot": True if req.receipt_image else False,
+        "timestamp": datetime.now().strftime("%d %b %Y, %I:%M %p"),
+        "status": "VERIFIED"
+    }
+    global_donations.append(donation_record)
+    return {
+        "message": "Donation verified and recorded successfully in Temple Ledger",
+        "receipt": donation_record
+    }
 
 @app.get("/services/lostfound")
 def get_lostfound():

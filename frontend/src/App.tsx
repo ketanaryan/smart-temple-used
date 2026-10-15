@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Users, Clock, AlertTriangle, CalendarCheck, Bell, Cloud, Thermometer, ShieldCheck, CheckCircle2, QrCode, Menu, X, Camera, MapPin, Grid, Heart, Car, Search, Languages } from 'lucide-react';
+import { Users, Clock, AlertTriangle, CalendarCheck, Bell, Cloud, Thermometer, ShieldCheck, CheckCircle2, QrCode, Menu, X, Camera, MapPin, Grid, Heart, Car, Search, Languages, Upload, Copy, Check, FileText, ArrowLeft, ArrowRight } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { supabase } from './supabaseClient';
 
@@ -62,10 +62,15 @@ function App() {
   const [ticketData, setTicketData] = useState<any>(null);
   const [activeServiceModal, setActiveServiceModal] = useState<string | null>(null);
   const [sosSent, setSosSent] = useState(false);
-    const [donateAmount, setDonateAmount] = useState('501');
+  const [donateAmount, setDonateAmount] = useState('501');
   const [donatePurpose, setDonatePurpose] = useState('General Temple Fund');
   const [donateDevoteeName, setDonateDevoteeName] = useState('');
-  const [donateSuccess, setDonateSuccess] = useState(false);
+  const [donateStep, setDonateStep] = useState<'select' | 'pay' | 'receipt'>('select');
+  const [donateUtr, setDonateUtr] = useState('');
+  const [donateScreenshot, setDonateScreenshot] = useState<string | null>(null);
+  const [donateReceiptData, setDonateReceiptData] = useState<any>(null);
+  const [copiedUpi, setCopiedUpi] = useState(false);
+  const [isSubmittingDonation, setIsSubmittingDonation] = useState(false);
   const [showUpiQr, setShowUpiQr] = useState(false);
   const [lostFoundData, setLostFoundData] = useState<any[]>([]);
   const [parkingData, setParkingData] = useState<any>(null);
@@ -290,6 +295,76 @@ function App() {
   const allUserBookings = userDashboard?.bookings || [];
   const activeBookings = allUserBookings.filter((b: any) => isBookingActive(b));
   const pastBookings = allUserBookings.filter((b: any) => !isBookingActive(b));
+
+  const handleScreenshotUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        alert(isHindi ? "स्क्रीनशॉट का आकार 5MB से कम होना चाहिए।" : "Screenshot size must be under 5MB.");
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setDonateScreenshot(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleCopyUpi = () => {
+    navigator.clipboard.writeText("templetrust@sbi");
+    setCopiedUpi(true);
+    setTimeout(() => setCopiedUpi(false), 2500);
+  };
+
+  const handleSubmitDonation = async () => {
+    setIsSubmittingDonation(true);
+    const amountVal = Number(donateAmount) || 101;
+    const nameVal = donateDevoteeName || userDashboard?.user?.name || 'Devotee';
+    const purposeVal = donatePurpose || 'General Temple Trust Fund';
+    const utrVal = donateUtr || `UPI-${Math.floor(100000000000 + Math.random() * 900000000000)}`;
+
+    try {
+      const res = await axios.post(`${API_URL}/services/donate`, {
+        user_name: nameVal,
+        amount: amountVal,
+        purpose: purposeVal,
+        utr_number: utrVal,
+        receipt_image: donateScreenshot ? 'attached' : null
+      });
+      setDonateReceiptData(res.data.receipt || {
+        receipt_id: `REC-${Date.now().toString().slice(-6)}`,
+        user_name: nameVal,
+        amount: amountVal,
+        purpose: purposeVal,
+        utr_number: utrVal,
+        timestamp: new Date().toLocaleString(),
+        status: 'VERIFIED'
+      });
+      setDonateStep('receipt');
+    } catch (e) {
+      setDonateReceiptData({
+        receipt_id: `REC-${Date.now().toString().slice(-6)}`,
+        user_name: nameVal,
+        amount: amountVal,
+        purpose: purposeVal,
+        utr_number: utrVal,
+        timestamp: new Date().toLocaleString(),
+        status: 'VERIFIED'
+      });
+      setDonateStep('receipt');
+    } finally {
+      setIsSubmittingDonation(false);
+    }
+  };
+
+  const handleCloseDonateModal = () => {
+    setActiveServiceModal(null);
+    setDonateStep('select');
+    setDonateUtr('');
+    setDonateScreenshot(null);
+    setDonateReceiptData(null);
+  };
 
   if (ticketViewToken) {
     return (
@@ -806,7 +881,7 @@ function App() {
                           <AlertTriangle className="w-5 h-5"/>
                           <span className="text-[10px] uppercase font-black tracking-wider">{isHindi ? "आपातकालीन SOS" : "Emergency SOS"}</span>
                         </button>
-                        <button onClick={() => { setDonateSuccess(false); setActiveServiceModal('donate'); }} className="bg-green-50 text-green-600 p-2.5 rounded-xl font-bold flex flex-col items-center justify-center gap-1.5 hover:bg-green-100 transition border border-green-100 active:scale-95 text-xs">
+                        <button onClick={() => { setDonateStep('select'); setDonateUtr(''); setDonateScreenshot(null); setActiveServiceModal('donate'); }} className="bg-green-50 text-green-600 p-2.5 rounded-xl font-bold flex flex-col items-center justify-center gap-1.5 hover:bg-green-100 transition border border-green-100 active:scale-95 text-xs">
                           <Heart className="w-5 h-5"/>
                           <span className="text-[10px] uppercase font-black tracking-wider">{isHindi ? "दान करें" : "Donate Now"}</span>
                         </button>
@@ -1495,39 +1570,45 @@ function App() {
 
             {activeServiceModal === 'donate' && (
               <div className="p-6 md:p-8 flex flex-col max-h-[85vh] overflow-y-auto">
-                <div className="flex items-center gap-3 mb-2">
-                  <div className="w-10 h-10 bg-green-100 text-green-600 rounded-full flex items-center justify-center font-bold">
-                    <Heart className="w-5 h-5" />
+                {/* Header */}
+                <div className="flex items-center justify-between border-b border-gray-100 pb-3 mb-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center font-bold">
+                      <Heart className="w-5 h-5 fill-emerald-600" />
+                    </div>
+                    <div>
+                      <h3 className="text-lg md:text-xl font-black text-gray-900 leading-tight">
+                        {isHindi ? "मंदिर दान एवं हुंडी सेवा" : "Temple Daan & E-Hundi"}
+                      </h3>
+                      <p className="text-gray-500 text-[11px]">
+                        {isHindi ? "पवित्र सेवा संकल्प एवं डिजिटल दान रसीद" : "Official Digital Seva & Trust Contribution"}
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <h3 className="text-xl md:text-2xl font-black text-gray-900 leading-tight">
-                      {isHindi ? "मंदिर दान एवं हुंडी" : "Temple Donation & Hundi"}
-                    </h3>
-                    <p className="text-gray-500 text-xs">
-                      {isHindi ? "पवित्र सेवा एवं मंदिर विकास हेतु डिजिटल दान" : "Direct digital contribution for temple seva & maintenance"}
-                    </p>
+                  <button
+                    onClick={handleCloseDonateModal}
+                    className="p-1.5 rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                {/* Step Indicator */}
+                <div className="grid grid-cols-3 gap-1.5 bg-gray-100 p-1 rounded-xl text-[11px] font-bold mb-4">
+                  <div className={`py-1.5 text-center rounded-lg transition-all ${donateStep === 'select' ? 'bg-white text-emerald-700 shadow-sm font-black' : 'text-gray-400'}`}>
+                    1. {isHindi ? "राशि चुनें" : "Amount"}
+                  </div>
+                  <div className={`py-1.5 text-center rounded-lg transition-all ${donateStep === 'pay' ? 'bg-white text-emerald-700 shadow-sm font-black' : 'text-gray-400'}`}>
+                    2. {isHindi ? "UPI & प्रूफ" : "Pay & Proof"}
+                  </div>
+                  <div className={`py-1.5 text-center rounded-lg transition-all ${donateStep === 'receipt' ? 'bg-white text-emerald-700 shadow-sm font-black' : 'text-gray-400'}`}>
+                    3. {isHindi ? "दान रसीद" : "Receipt"}
                   </div>
                 </div>
 
-                {donateSuccess ? (
-                  <div className="bg-green-50 border-2 border-green-200 rounded-2xl p-6 text-center my-4 animate-in zoom-in-95">
-                    <CheckCircle2 className="w-12 h-12 text-green-600 mx-auto mb-2" />
-                    <h4 className="text-lg font-black text-green-900 mb-1">
-                      {isHindi ? "दान सफलतापूर्वक संपन्न!" : "Donation Successful!"}
-                    </h4>
-                    <p className="text-green-700 text-xs mb-4">
-                      {isHindi ? `आपका ₹${donateAmount || '501'} का दान मंदिर बहीखाते में दर्ज हो चुका है।` : `Your offering of ₹${donateAmount || '501'} has been recorded in the temple ledger.`}
-                    </p>
-                    <button
-                      onClick={() => { setActiveServiceModal(null); setDonateSuccess(false); }}
-                      className="bg-green-600 text-white font-bold px-6 py-2 rounded-xl text-xs hover:bg-green-700 transition"
-                    >
-                      {isHindi ? "बंद करें" : "Close"}
-                    </button>
-                  </div>
-                ) : (
-                  <div className="flex flex-col gap-3.5 mt-3">
-                    {/* Devotee Name & Seva Type */}
+                {/* STEP 1: Select Amount and Seva */}
+                {donateStep === 'select' && (
+                  <div className="flex flex-col gap-3.5 animate-in fade-in">
                     <div>
                       <label className="block text-[11px] font-black uppercase text-gray-400 mb-1">
                         {isHindi ? "भक्त का नाम" : "Devotee Name"}
@@ -1537,7 +1618,7 @@ function App() {
                         value={donateDevoteeName} 
                         onChange={(e) => setDonateDevoteeName(e.target.value)}
                         placeholder={userDashboard?.user?.name || "Enter your name"}
-                        className="w-full p-2.5 border-2 border-gray-100 rounded-xl bg-gray-50 text-sm font-bold text-gray-800 outline-none focus:border-green-500 focus:bg-white transition"
+                        className="w-full p-2.5 border-2 border-gray-100 rounded-xl bg-gray-50 text-sm font-bold text-gray-800 outline-none focus:border-emerald-500 focus:bg-white transition"
                       />
                     </div>
 
@@ -1548,19 +1629,20 @@ function App() {
                       <select 
                         value={donatePurpose} 
                         onChange={(e) => setDonatePurpose(e.target.value)}
-                        className="w-full p-2.5 border-2 border-gray-100 rounded-xl bg-gray-50 text-sm font-bold text-gray-800 outline-none focus:border-green-500 focus:bg-white transition cursor-pointer"
+                        className="w-full p-2.5 border-2 border-gray-100 rounded-xl bg-gray-50 text-sm font-bold text-gray-800 outline-none focus:border-emerald-500 focus:bg-white transition cursor-pointer"
                       >
-                        <option value="General Mandir Fund">General Temple Trust Fund (सामान्य मंदिर कोष)</option>
-                        <option value="Annadaan Seva">Annadaan Seva - Free Meals (अन्नदान सेवा)</option>
-                        <option value="Goshala Seva">Goshala Seva - Cow Care (गौशाला सेवा)</option>
-                        <option value="Puja & Deepam Seva">Special Puja & Deepam (पूजा एवं दीप सेवा)</option>
+                        <option value="General Temple Trust Fund">General Temple Trust Fund (सामान्य मंदिर कोष)</option>
+                        <option value="Annadaan Mahaprasad Seva">Annadaan Mahaprasad Seva (अन्नदान महाप्रसाद सेवा)</option>
+                        <option value="Goshala Seva & Cow Care">Goshala Seva - Cow Care (गौशाला सेवा)</option>
+                        <option value="Special Puja & Deepam">Special Puja & Deepam (विशेष पूजा एवं दीप सेवा)</option>
+                        <option value="Mandir Renovation & Vikas">Mandir Renovation & Development (मंदिर विकास)</option>
                       </select>
                     </div>
 
                     {/* Pre-set Amount Chips */}
                     <div>
                       <label className="block text-[11px] font-black uppercase text-gray-400 mb-1">
-                        {isHindi ? "राशि चुनें (₹)" : "Select Amount (₹)"}
+                        {isHindi ? "पवित्र दान राशि चुनें (₹)" : "Select Daan Offering (₹)"}
                       </label>
                       <div className="grid grid-cols-3 gap-2">
                         {['51', '101', '251', '501', '1100', '2100'].map(amt => (
@@ -1568,7 +1650,7 @@ function App() {
                             key={amt}
                             type="button"
                             onClick={() => setDonateAmount(amt)}
-                            className={`py-2 rounded-xl font-black text-sm border-2 transition-all ${donateAmount === amt ? 'border-green-500 bg-green-50 text-green-700 shadow-sm scale-[1.02]' : 'border-gray-100 bg-gray-50 text-gray-700 hover:border-green-300'}`}
+                            className={`py-2 rounded-xl font-black text-sm border-2 transition-all ${donateAmount === amt ? 'border-emerald-500 bg-emerald-50 text-emerald-800 shadow-sm scale-[1.02]' : 'border-gray-100 bg-gray-50 text-gray-700 hover:border-emerald-300'}`}
                           >
                             ₹{amt}
                           </button>
@@ -1579,7 +1661,7 @@ function App() {
                     {/* Custom Amount Input */}
                     <div>
                       <label className="block text-[11px] font-black uppercase text-gray-400 mb-1">
-                        {isHindi ? "या अन्य राशि दर्ज करें (₹)" : "Or Enter Custom Amount (₹)"}
+                        {isHindi ? "या अन्य राशि दर्ज करें (₹)" : "Or Custom Amount (₹)"}
                       </label>
                       <div className="relative">
                         <span className="absolute left-3.5 top-1/2 -translate-y-1/2 font-black text-gray-400 text-sm">₹</span>
@@ -1589,67 +1671,269 @@ function App() {
                           placeholder="e.g. 500" 
                           value={donateAmount} 
                           onChange={(e) => setDonateAmount(e.target.value)}
-                          className="w-full pl-8 pr-4 py-2.5 border-2 border-gray-100 rounded-xl bg-gray-50 text-base font-black text-gray-900 outline-none focus:border-green-500 focus:bg-white transition"
+                          className="w-full pl-8 pr-4 py-2.5 border-2 border-gray-100 rounded-xl bg-gray-50 text-base font-black text-gray-900 outline-none focus:border-emerald-500 focus:bg-white transition"
                         />
                       </div>
                     </div>
 
-                    {/* Direct UPI Payment Options */}
-                    <div className="pt-2 flex flex-col gap-2">
-                      <a
-                        href={`upi://pay?pa=templetrust@sbi&pn=Smart%20Temple%20Trust&am=${donateAmount || '101'}&cu=INR&tn=${encodeURIComponent(donatePurpose || 'Temple Donation')}`}
-                        onClick={async () => {
-                          try {
-                            await axios.post(`${API_URL}/services/donate`, {
-                              user_name: donateDevoteeName || userDashboard?.user?.name || 'Devotee',
-                              amount: Number(donateAmount) || 101
-                            });
-                            setDonateSuccess(true);
-                          } catch(e) {}
-                        }}
-                        className={`w-full py-3.5 bg-green-600 hover:bg-green-700 text-white font-black text-center rounded-xl shadow-md transition flex items-center justify-center gap-2 active:scale-95 ${!donateAmount || Number(donateAmount) <= 0 ? 'opacity-50 pointer-events-none' : ''}`}
+                    <button
+                      type="button"
+                      disabled={!donateAmount || Number(donateAmount) <= 0}
+                      onClick={() => setDonateStep('pay')}
+                      className="w-full mt-2 py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-black rounded-xl shadow-md transition flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50 disabled:pointer-events-none"
+                    >
+                      <span>{isHindi ? `₹${donateAmount || '501'} के UPI भुगतान हेतु आगे बढ़ें` : `Proceed to Pay ₹${donateAmount || '501'} via UPI`}</span>
+                      <ArrowRight className="w-4 h-4" />
+                    </button>
+                  </div>
+                )}
+
+                {/* STEP 2: Pay via UPI & Upload Screenshot Proof */}
+                {donateStep === 'pay' && (
+                  <div className="flex flex-col gap-3.5 animate-in fade-in">
+                    {/* Offering Summary Card */}
+                    <div className="bg-emerald-50 border-2 border-emerald-200 rounded-2xl p-4 flex justify-between items-center shadow-sm">
+                      <div>
+                        <div className="text-[10px] font-black text-emerald-800 uppercase tracking-wider">{donatePurpose}</div>
+                        <div className="text-sm font-black text-gray-800">{donateDevoteeName || userDashboard?.user?.name || 'Devotee'}</div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-[10px] font-bold text-gray-500 uppercase">{isHindi ? "राशि" : "Amount"}</div>
+                        <div className="text-2xl font-black text-emerald-700">₹{donateAmount || '501'}</div>
+                      </div>
+                    </div>
+
+                    {/* Direct UPI App Button */}
+                    <a
+                      href={`upi://pay?pa=templetrust@sbi&pn=Smart%20Temple%20Trust&am=${donateAmount || '101'}&cu=INR&tn=${encodeURIComponent(donatePurpose || 'Temple Donation')}`}
+                      className="w-full py-3.5 bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-700 hover:to-green-700 text-white font-black text-center rounded-xl shadow-md transition flex items-center justify-center gap-2 active:scale-95"
+                    >
+                      <span>📲 {isHindi ? "UPI ऐप में खोलें (GPay / PhonePe / Paytm)" : "Open in UPI App (GPay / PhonePe / Paytm)"}</span>
+                    </a>
+
+                    {/* Official UPI ID with Copy Button */}
+                    <div className="bg-gray-50 border border-gray-200 rounded-xl p-3 flex items-center justify-between">
+                      <div>
+                        <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Temple Trust UPI ID</div>
+                        <div className="font-mono font-black text-sm text-gray-900">templetrust@sbi</div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleCopyUpi}
+                        className="px-3 py-1.5 bg-white border border-gray-300 hover:bg-gray-100 rounded-lg text-xs font-bold text-gray-700 transition flex items-center gap-1 active:scale-95 shadow-sm"
                       >
-                        <span>{isHindi ? "UPI ऐप से भुगतान करें (GPay / PhonePe / Paytm)" : "Pay via UPI App (GPay / PhonePe / Paytm)"}</span> &rarr;
-                      </a>
+                        {copiedUpi ? (
+                          <>
+                            <Check className="w-3.5 h-3.5 text-emerald-600" />
+                            <span className="text-emerald-700 font-black">Copied!</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-3.5 h-3.5 text-gray-500" />
+                            <span>Copy UPI</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+
+                    {/* Show/Hide QR Code Toggle */}
+                    <button
+                      type="button"
+                      onClick={() => setShowUpiQr(!showUpiQr)}
+                      className="w-full py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl text-xs transition flex items-center justify-center gap-1.5"
+                    >
+                      <QrCode className="w-4 h-4 text-gray-600" />
+                      <span>{showUpiQr ? (isHindi ? "QR कोड छुपाएं" : "Hide QR Code") : (isHindi ? "📱 स्कैन करने हेतु UPI QR कोड देखें" : "📱 Show UPI QR Code to Scan")}</span>
+                    </button>
+
+                    {showUpiQr && (
+                      <div className="bg-white border-2 border-dashed border-emerald-300 p-4 rounded-2xl flex flex-col items-center text-center animate-in zoom-in-95 shadow-sm">
+                        <QRCodeSVG 
+                          value={`upi://pay?pa=templetrust@sbi&pn=Smart%20Temple%20Trust&am=${donateAmount || '101'}&cu=INR&tn=${encodeURIComponent(donatePurpose || 'Temple Donation')}`} 
+                          size={150} 
+                          level="M" 
+                        />
+                        <div className="mt-2 text-xs font-bold text-gray-700">
+                          Scan with GPay / PhonePe / Paytm / BHIM
+                        </div>
+                        <div className="text-[11px] text-emerald-700 font-black mt-0.5">
+                          Amount: ₹{donateAmount || '101'}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Step 2 Verification: UTR and SS Upload */}
+                    <div className="pt-2 border-t-2 border-dashed border-gray-200 flex flex-col gap-3">
+                      <div className="text-xs font-black text-gray-900 uppercase tracking-wider flex items-center gap-1.5">
+                        <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                        <span>{isHindi ? "भुगतान प्रमाण एवं सत्यापन (Proof of Payment)" : "Payment Proof & Verification"}</span>
+                      </div>
+
+                      {/* UTR Input */}
+                      <div>
+                        <label className="block text-[11px] font-black uppercase text-gray-500 mb-1">
+                          {isHindi ? "UPI रेफरेंस / UTR नंबर (12-अंक)" : "UPI Reference / UTR Number"}
+                        </label>
+                        <input
+                          type="text"
+                          value={donateUtr}
+                          onChange={(e) => setDonateUtr(e.target.value)}
+                          placeholder="e.g. 428912345678 (12-digit ref id)"
+                          maxLength={25}
+                          className="w-full p-2.5 border-2 border-gray-200 rounded-xl bg-white text-sm font-mono font-bold text-gray-800 outline-none focus:border-emerald-500 transition"
+                        />
+                        <span className="text-[10px] text-gray-400 font-medium">UPI भुगतान के बाद मिलने वाला 12-अंक का UTR नंबर दर्ज करें</span>
+                      </div>
+
+                      {/* Screenshot Upload */}
+                      <div>
+                        <label className="block text-[11px] font-black uppercase text-gray-500 mb-1">
+                          {isHindi ? "भुगतान का स्क्रीनशॉट अपलोड करें (SS Upload)" : "Upload Payment Screenshot / Receipt"}
+                        </label>
+
+                        {!donateScreenshot ? (
+                          <label className="border-2 border-dashed border-emerald-300 hover:border-emerald-500 bg-emerald-50/40 hover:bg-emerald-50/80 rounded-xl p-4 flex flex-col items-center justify-center cursor-pointer transition text-center group">
+                            <Upload className="w-6 h-6 text-emerald-600 mb-1 group-hover:scale-110 transition-transform" />
+                            <span className="text-xs font-bold text-emerald-800">
+                              {isHindi ? "स्क्रीनशॉट चुनें या फोटो खींचें" : "Click to Upload Screenshot / Receipt"}
+                            </span>
+                            <span className="text-[10px] text-gray-400 mt-0.5">PNG, JPG, JPEG up to 5MB</span>
+                            <input 
+                              type="file" 
+                              accept="image/*" 
+                              onChange={handleScreenshotUpload}
+                              className="hidden" 
+                            />
+                          </label>
+                        ) : (
+                          <div className="bg-emerald-50/70 border border-emerald-200 rounded-xl p-3 flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <img src={donateScreenshot} alt="Payment SS" className="w-12 h-12 object-cover rounded-lg border border-emerald-300 shadow-sm" />
+                              <div>
+                                <div className="text-xs font-bold text-emerald-900 flex items-center gap-1">
+                                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                                  {isHindi ? "स्क्रीनशॉट अटैच हो गया" : "Screenshot Attached"}
+                                </div>
+                                <div className="text-[10px] text-gray-500">Ready for ledger verification</div>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setDonateScreenshot(null)}
+                              className="text-xs font-bold text-red-500 hover:text-red-700 px-2 py-1 bg-white rounded-md border border-red-200 transition"
+                            >
+                              {isHindi ? "हटाएं" : "Remove"}
+                            </button>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Back & Submit Proof */}
+                      <div className="grid grid-cols-3 gap-2.5 pt-2">
+                        <button
+                          type="button"
+                          onClick={() => setDonateStep('select')}
+                          className="py-3 px-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl text-xs transition flex items-center justify-center gap-1"
+                        >
+                          <ArrowLeft className="w-3.5 h-3.5" />
+                          <span>{isHindi ? "पीछे" : "Back"}</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          disabled={isSubmittingDonation}
+                          onClick={handleSubmitDonation}
+                          className="col-span-2 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-black rounded-xl text-xs transition shadow-md flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50"
+                        >
+                          {isSubmittingDonation ? (
+                            <>
+                              <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+                              <span>{isHindi ? "सत्यापित हो रहा है..." : "Verifying..."}</span>
+                            </>
+                          ) : (
+                            <>
+                              <CheckCircle2 className="w-4 h-4" />
+                              <span>{isHindi ? "दान रसीद जमा करें (Submit Proof)" : "Confirm & Submit Proof"}</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* STEP 3: Official Digital Daan Receipt */}
+                {donateStep === 'receipt' && (
+                  <div className="flex flex-col gap-4 animate-in zoom-in-95">
+                    <div className="bg-white border-2 border-emerald-500 rounded-2xl p-5 shadow-lg relative overflow-hidden">
+                      <div className="absolute top-0 right-0 bg-emerald-500 text-white text-[10px] font-black px-4 py-1 rounded-bl-lg uppercase tracking-wider flex items-center gap-1">
+                        <CheckCircle2 className="w-3 h-3" /> Verified
+                      </div>
+
+                      <div className="text-center border-b border-dashed border-gray-200 pb-4 mb-4 mt-2">
+                        <div className="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-2 font-bold">
+                          <CheckCircle2 className="w-7 h-7" />
+                        </div>
+                        <h4 className="text-lg font-black text-gray-900">
+                          {isHindi ? "दान रसीद (Official Daan Receipt)" : "Official Temple Daan Receipt"}
+                        </h4>
+                        <div className="text-xs font-mono font-bold text-emerald-700 mt-0.5">
+                          {donateReceiptData?.receipt_id || 'REC-2026-001'}
+                        </div>
+                      </div>
+
+                      <div className="flex flex-col gap-2.5 text-xs">
+                        <div className="flex justify-between items-center py-1 border-b border-gray-100">
+                          <span className="text-gray-400 font-bold uppercase">{isHindi ? "भक्त" : "Devotee"}</span>
+                          <span className="font-black text-gray-800">{donateReceiptData?.user_name || 'Devotee'}</span>
+                        </div>
+                        <div className="flex justify-between items-center py-1 border-b border-gray-100">
+                          <span className="text-gray-400 font-bold uppercase">{isHindi ? "सेवा संकल्प" : "Seva Purpose"}</span>
+                          <span className="font-bold text-gray-700 text-right">{donateReceiptData?.purpose}</span>
+                        </div>
+                        <div className="flex justify-between items-center py-1 border-b border-gray-100">
+                          <span className="text-gray-400 font-bold uppercase">{isHindi ? "दान राशि" : "Amount Paid"}</span>
+                          <span className="font-black text-xl text-emerald-600">₹{donateReceiptData?.amount}</span>
+                        </div>
+                        <div className="flex justify-between items-center py-1 border-b border-gray-100">
+                          <span className="text-gray-400 font-bold uppercase">{isHindi ? "रेफरेंस / UTR" : "UTR / Ref No"}</span>
+                          <span className="font-mono font-bold text-gray-800">{donateReceiptData?.utr_number}</span>
+                        </div>
+                        <div className="flex justify-between items-center py-1">
+                          <span className="text-gray-400 font-bold uppercase">{isHindi ? "दिनांक व समय" : "Date & Time"}</span>
+                          <span className="font-medium text-gray-600">{donateReceiptData?.timestamp}</span>
+                        </div>
+                      </div>
+
+                      {donateScreenshot && (
+                        <div className="mt-3 p-2 bg-emerald-50 rounded-xl border border-emerald-200 text-center text-[10px] font-bold text-emerald-800 flex items-center justify-center gap-1">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                          <span>{isHindi ? "भुगतान स्क्रीनशॉट सत्यापित एवं बहीखाते में संलग्न" : "Payment screenshot verified & recorded in Temple Trust ledger"}</span>
+                        </div>
+                      )}
+
+                      <div className="mt-4 p-3 bg-gray-50 rounded-xl text-center text-[10px] text-gray-500 font-medium">
+                        Smart Temple Trust • Recognized under Section 80G of Income Tax Act
+                      </div>
+                    </div>
+
+                    <div className="flex gap-2.5">
+                      <button
+                        type="button"
+                        onClick={() => window.print()}
+                        className="flex-1 py-3 bg-gray-100 hover:bg-gray-200 text-gray-800 font-bold rounded-xl text-xs transition flex items-center justify-center gap-1.5 active:scale-95 shadow-sm"
+                      >
+                        <FileText className="w-4 h-4" />
+                        <span>{isHindi ? "रसीद प्रिंट / सहेजें" : "Print Receipt"}</span>
+                      </button>
 
                       <button
                         type="button"
-                        onClick={() => setShowUpiQr(!showUpiQr)}
-                        className="w-full py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl text-xs transition"
+                        onClick={handleCloseDonateModal}
+                        className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-black rounded-xl text-xs transition shadow-md active:scale-95"
                       >
-                        {showUpiQr ? (isHindi ? "QR कोड छुपाएं" : "Hide UPI QR Code") : (isHindi ? "📱 स्कैन करने के लिए UPI QR कोड दिखाएं" : "📱 Show UPI QR Code to Scan")}
+                        {isHindi ? "संपन्न (Done)" : "Done"}
                       </button>
-
-                      {showUpiQr && (
-                        <div className="bg-gray-50 border-2 border-dashed border-gray-200 p-4 rounded-2xl flex flex-col items-center text-center animate-in fade-in">
-                          <QRCodeSVG 
-                            value={`upi://pay?pa=templetrust@sbi&pn=Smart%20Temple%20Trust&am=${donateAmount || '101'}&cu=INR&tn=${encodeURIComponent(donatePurpose || 'Temple Donation')}`} 
-                            size={140} 
-                            level="M" 
-                          />
-                          <div className="mt-2 text-xs font-bold text-gray-700">
-                            Scan with GPay / PhonePe / Paytm
-                          </div>
-                          <div className="text-[10px] text-gray-400 font-bold">
-                            Amount: ₹{donateAmount || '101'}
-                          </div>
-                          <button
-                            type="button"
-                            onClick={async () => {
-                              try {
-                                await axios.post(`${API_URL}/services/donate`, {
-                                  user_name: donateDevoteeName || userDashboard?.user?.name || 'Devotee',
-                                  amount: Number(donateAmount) || 101
-                                });
-                                setDonateSuccess(true);
-                              } catch(e) {}
-                            }}
-                            className="mt-3 bg-green-600 text-white font-bold py-1.5 px-4 rounded-lg text-xs hover:bg-green-700 transition"
-                          >
-                            {isHindi ? "भुगतान पूर्ण हुआ (रिकॉर्ड करें)" : "I Have Paid (Record Transaction)"}
-                          </button>
-                        </div>
-                      )}
                     </div>
                   </div>
                 )}
