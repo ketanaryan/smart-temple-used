@@ -6,6 +6,13 @@ import { supabase } from './supabaseClient';
 
 const API_URL = import.meta.env.PROD ? '/api' : 'http://127.0.0.1:8000';
 
+
+const normalizeCity = (city: string) => {
+  if (!city) return '';
+  const c = city.trim();
+  return c.charAt(0).toUpperCase() + c.slice(1).toLowerCase();
+};
+
 function App() {
   const [temples, setTemples] = useState<any[]>([]);
   const [slots, setSlots] = useState<any[]>([]);
@@ -37,7 +44,11 @@ function App() {
   const [ticketData, setTicketData] = useState<any>(null);
   const [activeServiceModal, setActiveServiceModal] = useState<string | null>(null);
   const [sosSent, setSosSent] = useState(false);
-  const [donateAmount, setDonateAmount] = useState('');
+    const [donateAmount, setDonateAmount] = useState('501');
+  const [donatePurpose, setDonatePurpose] = useState('General Temple Fund');
+  const [donateDevoteeName, setDonateDevoteeName] = useState('');
+  const [donateSuccess, setDonateSuccess] = useState(false);
+  const [showUpiQr, setShowUpiQr] = useState(false);
   const [lostFoundData, setLostFoundData] = useState<any[]>([]);
   const [parkingData, setParkingData] = useState<any>(null);
   const [lfType, setLfType] = useState('child');
@@ -543,27 +554,49 @@ function App() {
                     </div>
 
                     <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm mt-4">
-                      <h4 className="font-black text-gray-900 mb-3 flex items-center gap-2 text-xs uppercase tracking-wider"><Grid className="w-4 h-4 text-orange-500"/> Devotee Services</h4>
+                      <h4 className="font-black text-gray-900 mb-3 flex items-center gap-2 text-xs uppercase tracking-wider"><Grid className="w-4 h-4 text-orange-500"/> {isHindi ? "भक्त सेवाएं" : "Devotee Services"}</h4>
+                      
+                      {/* Language Selection Pill */}
+                      <div className="bg-indigo-50/70 p-2.5 rounded-xl border border-indigo-100 flex flex-col gap-1.5 mb-3">
+                        <div className="flex items-center justify-between text-[11px] font-black text-indigo-950 uppercase tracking-wider">
+                          <span className="flex items-center gap-1"><Languages className="w-3.5 h-3.5 text-indigo-600"/> {isHindi ? "भाषा चुनें" : "Language"}</span>
+                          <span className="text-[9px] text-indigo-700 bg-white font-bold px-1.5 py-0.5 rounded border border-indigo-200">{isHindi ? 'हिंदी चालू है' : 'English Active'}</span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-1.5 bg-white/90 p-1 rounded-lg border border-indigo-200/60">
+                          <button
+                            type="button"
+                            onClick={() => { localStorage.setItem('lang', 'en'); window.location.reload(); }}
+                            className={`py-1 text-xs font-black rounded-md transition-all ${!isHindi ? 'bg-indigo-600 text-white shadow-sm' : 'text-gray-600 hover:text-indigo-600'}`}
+                          >
+                            English
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => { localStorage.setItem('lang', 'hi'); window.location.reload(); }}
+                            className={`py-1 text-xs font-black rounded-md transition-all ${isHindi ? 'bg-indigo-600 text-white shadow-sm' : 'text-gray-600 hover:text-indigo-600'}`}
+                          >
+                            हिंदी
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Services Grid */}
                       <div className="grid grid-cols-2 gap-2.5">
                         <button onClick={() => setActiveServiceModal('sos')} className="bg-red-50 text-red-600 p-2.5 rounded-xl font-bold flex flex-col items-center justify-center gap-1.5 hover:bg-red-100 transition border border-red-100 active:scale-95 text-xs">
                           <AlertTriangle className="w-5 h-5"/>
-                          <span className="text-[10px] uppercase font-black tracking-wider">Emergency SOS</span>
+                          <span className="text-[10px] uppercase font-black tracking-wider">{isHindi ? "आपातकालीन SOS" : "Emergency SOS"}</span>
                         </button>
-                        <button onClick={() => { localStorage.setItem('lang', isHindi ? 'en' : 'hi'); window.location.reload(); }} className="bg-indigo-50 text-indigo-600 p-2.5 rounded-xl font-bold flex flex-col items-center justify-center gap-1.5 hover:bg-indigo-100 transition border border-indigo-100 active:scale-95 text-xs">
-                          <Languages className="w-5 h-5"/>
-                          <span className="text-[10px] uppercase font-black tracking-wider">{isHindi ? 'English' : 'हिंदी'}</span>
-                        </button>
-                        <button onClick={() => setActiveServiceModal('donate')} className="bg-green-50 text-green-600 p-2.5 rounded-xl font-bold flex flex-col items-center justify-center gap-1.5 hover:bg-green-100 transition border border-green-100 active:scale-95 text-xs">
+                        <button onClick={() => { setDonateSuccess(false); setActiveServiceModal('donate'); }} className="bg-green-50 text-green-600 p-2.5 rounded-xl font-bold flex flex-col items-center justify-center gap-1.5 hover:bg-green-100 transition border border-green-100 active:scale-95 text-xs">
                           <Heart className="w-5 h-5"/>
-                          <span className="text-[10px] uppercase font-black tracking-wider">Donate Now</span>
+                          <span className="text-[10px] uppercase font-black tracking-wider">{isHindi ? "दान करें" : "Donate Now"}</span>
                         </button>
                         <button onClick={() => { fetchServices(); setActiveServiceModal('parking'); }} className="bg-blue-50 text-blue-600 p-2.5 rounded-xl font-bold flex flex-col items-center justify-center gap-1.5 hover:bg-blue-100 transition border border-blue-100 active:scale-95 text-xs">
                           <Car className="w-5 h-5"/>
-                          <span className="text-[10px] uppercase font-black tracking-wider">Parking Mgmt</span>
+                          <span className="text-[10px] uppercase font-black tracking-wider">{isHindi ? "पार्किंग स्थिति" : "Parking Mgmt"}</span>
                         </button>
-                        <button onClick={() => { fetchServices(); setActiveServiceModal('lostfound'); }} className="bg-purple-50 text-purple-600 p-2.5 rounded-xl font-bold flex flex-col items-center justify-center gap-1.5 hover:bg-purple-100 transition border border-purple-100 active:scale-95 col-span-2 text-xs">
+                        <button onClick={() => { fetchServices(); setActiveServiceModal('lostfound'); }} className="bg-purple-50 text-purple-600 p-2.5 rounded-xl font-bold flex flex-col items-center justify-center gap-1.5 hover:bg-purple-100 transition border border-purple-100 active:scale-95 text-xs">
                           <Search className="w-5 h-5"/>
-                          <span className="text-[10px] uppercase font-black tracking-wider">AI Lost & Found (Kids/Items)</span>
+                          <span className="text-[10px] uppercase font-black tracking-wider">{isHindi ? "खोया-पाया" : "AI Lost & Found"}</span>
                         </button>
                       </div>
                     </div>
@@ -578,21 +611,21 @@ function App() {
                         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
                           <div>
                             <h3 className="text-2xl font-black text-gray-900 tracking-tight">{isHindi ? "मंदिर चुनें" : "Select Temple"}</h3>
-                            <p className="text-sm font-medium text-gray-500">Choose your destination for Darshan</p>
+                            <p className="text-sm font-medium text-gray-500">{isHindi ? "दर्शन के लिए अपना गंतव्य चुनें" : "Choose your destination for Darshan"}</p>
                           </div>
                           <select 
                             className="w-full md:w-auto border p-3 rounded-xl bg-gray-50 font-bold text-gray-700 focus:ring-2 focus:ring-orange-500 outline-none transition cursor-pointer"
                             value={selectedCity}
                             onChange={(e) => setSelectedCity(e.target.value)}
                           >
-                            {['All Cities', ...Array.from(new Set(temples.map((t: any) => t.city)))].map((city: any, i: number) => (
+                            {['All Cities', ...Array.from(new Set(temples.map((t: any) => normalizeCity(t.city)).filter(Boolean))).sort()].map((city: any, i: number) => (
                               <option key={i} value={city}>{city}</option>
                             ))}
                           </select>
                         </div>
                         
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 overflow-y-auto pr-2 pb-4">
-                          {temples.filter((t: any) => (selectedCity === 'All Cities' || t.city === selectedCity)).map((t: any) => {
+                          {temples.filter((t: any) => (selectedCity === 'All Cities' || normalizeCity(t.city) === selectedCity)).map((t: any) => {
                             const density = t.id % 3 === 0 ? 'HIGH' : t.id % 2 === 0 ? 'MODERATE' : 'LOW';
                             const isFestival = t.id % 4 === 0;
                             return (
@@ -604,7 +637,7 @@ function App() {
                                 {isFestival && <div className="absolute top-0 right-0 bg-red-500 text-white text-[9px] font-black px-3 py-1 rounded-bl-xl tracking-wider shadow-sm z-10">SANKASHTI - RUSH</div>}
                                 <div>
                                   <div className="font-black text-gray-900 text-lg group-hover:text-orange-600 transition-colors pr-16 leading-tight mb-1">{t.name}</div>
-                                  <div className="text-xs font-bold text-gray-400 flex items-center gap-1"><MapPin className="w-3 h-3"/>{t.city}</div>
+                                  <div className="text-xs font-bold text-gray-400 flex items-center gap-1"><MapPin className="w-3 h-3"/>{normalizeCity(t.city)}</div>
                                 </div>
                                 <div className="flex justify-between items-end mt-4 pt-4 border-t border-gray-100">
                                   <div className="text-[10px] font-black text-gray-400 uppercase tracking-wider">Crowd Density</div>
@@ -1185,18 +1218,165 @@ function App() {
             )}
 
             {activeServiceModal === 'donate' && (
-              <div className="p-8">
-                <h3 className="text-2xl font-black text-gray-900 mb-2">Temple Donation</h3>
-                <p className="text-gray-500 mb-6 text-sm font-medium">Your digital contribution helps maintain the premises.</p>
-                <div className="grid grid-cols-3 gap-3 mb-6">
-                  {[101, 501, 1001].map(amt => (
-                    <button key={amt} onClick={() => setDonateAmount(String(amt))} className={`py-3 font-black rounded-xl border-2 transition-all ${donateAmount === String(amt) ? 'border-green-500 bg-green-50 text-green-700 shadow-sm' : 'border-gray-100 bg-gray-50 text-gray-600 hover:border-green-300'}`}>₹{amt}</button>
-                  ))}
+              <div className="p-6 md:p-8 flex flex-col max-h-[85vh] overflow-y-auto">
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="w-10 h-10 bg-green-100 text-green-600 rounded-full flex items-center justify-center font-bold">
+                    <Heart className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl md:text-2xl font-black text-gray-900 leading-tight">
+                      {isHindi ? "मंदिर दान एवं हुंडी" : "Temple Donation & Hundi"}
+                    </h3>
+                    <p className="text-gray-500 text-xs">
+                      {isHindi ? "पवित्र सेवा एवं मंदिर विकास हेतु डिजिटल दान" : "Direct digital contribution for temple seva & maintenance"}
+                    </p>
+                  </div>
                 </div>
-                <button onClick={async () => {
-                    if (!donateAmount) return;
-                    try { await axios.post(`${API_URL}/services/donate`, {user_name: userDashboard?.user?.name || 'Devotee', amount: Number(donateAmount)}); alert("Payment Successful!"); setActiveServiceModal(null); } catch(e) {}
-                }} className={`w-full py-4 font-black rounded-xl shadow-md transition ${!donateAmount ? 'bg-gray-200 text-gray-400' : 'bg-green-600 hover:bg-green-700 text-white active:scale-95'}`}>Pay via UPI</button>
+
+                {donateSuccess ? (
+                  <div className="bg-green-50 border-2 border-green-200 rounded-2xl p-6 text-center my-4 animate-in zoom-in-95">
+                    <CheckCircle2 className="w-12 h-12 text-green-600 mx-auto mb-2" />
+                    <h4 className="text-lg font-black text-green-900 mb-1">
+                      {isHindi ? "दान सफलतापूर्वक संपन्न!" : "Donation Successful!"}
+                    </h4>
+                    <p className="text-green-700 text-xs mb-4">
+                      {isHindi ? `आपका ₹${donateAmount || '501'} का दान मंदिर बहीखाते में दर्ज हो चुका है।` : `Your offering of ₹${donateAmount || '501'} has been recorded in the temple ledger.`}
+                    </p>
+                    <button
+                      onClick={() => { setActiveServiceModal(null); setDonateSuccess(false); }}
+                      className="bg-green-600 text-white font-bold px-6 py-2 rounded-xl text-xs hover:bg-green-700 transition"
+                    >
+                      {isHindi ? "बंद करें" : "Close"}
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-3.5 mt-3">
+                    {/* Devotee Name & Seva Type */}
+                    <div>
+                      <label className="block text-[11px] font-black uppercase text-gray-400 mb-1">
+                        {isHindi ? "भक्त का नाम" : "Devotee Name"}
+                      </label>
+                      <input 
+                        type="text" 
+                        value={donateDevoteeName} 
+                        onChange={(e) => setDonateDevoteeName(e.target.value)}
+                        placeholder={userDashboard?.user?.name || "Enter your name"}
+                        className="w-full p-2.5 border-2 border-gray-100 rounded-xl bg-gray-50 text-sm font-bold text-gray-800 outline-none focus:border-green-500 focus:bg-white transition"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-black uppercase text-gray-400 mb-1">
+                        {isHindi ? "सेवा संकल्प" : "Seva / Purpose"}
+                      </label>
+                      <select 
+                        value={donatePurpose} 
+                        onChange={(e) => setDonatePurpose(e.target.value)}
+                        className="w-full p-2.5 border-2 border-gray-100 rounded-xl bg-gray-50 text-sm font-bold text-gray-800 outline-none focus:border-green-500 focus:bg-white transition cursor-pointer"
+                      >
+                        <option value="General Mandir Fund">General Temple Trust Fund (सामान्य मंदिर कोष)</option>
+                        <option value="Annadaan Seva">Annadaan Seva - Free Meals (अन्नदान सेवा)</option>
+                        <option value="Goshala Seva">Goshala Seva - Cow Care (गौशाला सेवा)</option>
+                        <option value="Puja & Deepam Seva">Special Puja & Deepam (पूजा एवं दीप सेवा)</option>
+                      </select>
+                    </div>
+
+                    {/* Pre-set Amount Chips */}
+                    <div>
+                      <label className="block text-[11px] font-black uppercase text-gray-400 mb-1">
+                        {isHindi ? "राशि चुनें (₹)" : "Select Amount (₹)"}
+                      </label>
+                      <div className="grid grid-cols-3 gap-2">
+                        {['51', '101', '251', '501', '1100', '2100'].map(amt => (
+                          <button
+                            key={amt}
+                            type="button"
+                            onClick={() => setDonateAmount(amt)}
+                            className={`py-2 rounded-xl font-black text-sm border-2 transition-all ${donateAmount === amt ? 'border-green-500 bg-green-50 text-green-700 shadow-sm scale-[1.02]' : 'border-gray-100 bg-gray-50 text-gray-700 hover:border-green-300'}`}
+                          >
+                            ₹{amt}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Custom Amount Input */}
+                    <div>
+                      <label className="block text-[11px] font-black uppercase text-gray-400 mb-1">
+                        {isHindi ? "या अन्य राशि दर्ज करें (₹)" : "Or Enter Custom Amount (₹)"}
+                      </label>
+                      <div className="relative">
+                        <span className="absolute left-3.5 top-1/2 -translate-y-1/2 font-black text-gray-400 text-sm">₹</span>
+                        <input 
+                          type="number" 
+                          min="1"
+                          placeholder="e.g. 500" 
+                          value={donateAmount} 
+                          onChange={(e) => setDonateAmount(e.target.value)}
+                          className="w-full pl-8 pr-4 py-2.5 border-2 border-gray-100 rounded-xl bg-gray-50 text-base font-black text-gray-900 outline-none focus:border-green-500 focus:bg-white transition"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Direct UPI Payment Options */}
+                    <div className="pt-2 flex flex-col gap-2">
+                      <a
+                        href={`upi://pay?pa=templetrust@sbi&pn=Smart%20Temple%20Trust&am=${donateAmount || '101'}&cu=INR&tn=${encodeURIComponent(donatePurpose || 'Temple Donation')}`}
+                        onClick={async () => {
+                          try {
+                            await axios.post(`${API_URL}/services/donate`, {
+                              user_name: donateDevoteeName || userDashboard?.user?.name || 'Devotee',
+                              amount: Number(donateAmount) || 101
+                            });
+                            setDonateSuccess(true);
+                          } catch(e) {}
+                        }}
+                        className={`w-full py-3.5 bg-green-600 hover:bg-green-700 text-white font-black text-center rounded-xl shadow-md transition flex items-center justify-center gap-2 active:scale-95 ${!donateAmount || Number(donateAmount) <= 0 ? 'opacity-50 pointer-events-none' : ''}`}
+                      >
+                        <span>{isHindi ? "UPI ऐप से भुगतान करें (GPay / PhonePe / Paytm)" : "Pay via UPI App (GPay / PhonePe / Paytm)"}</span> &rarr;
+                      </a>
+
+                      <button
+                        type="button"
+                        onClick={() => setShowUpiQr(!showUpiQr)}
+                        className="w-full py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl text-xs transition"
+                      >
+                        {showUpiQr ? (isHindi ? "QR कोड छुपाएं" : "Hide UPI QR Code") : (isHindi ? "📱 स्कैन करने के लिए UPI QR कोड दिखाएं" : "📱 Show UPI QR Code to Scan")}
+                      </button>
+
+                      {showUpiQr && (
+                        <div className="bg-gray-50 border-2 border-dashed border-gray-200 p-4 rounded-2xl flex flex-col items-center text-center animate-in fade-in">
+                          <QRCodeSVG 
+                            value={`upi://pay?pa=templetrust@sbi&pn=Smart%20Temple%20Trust&am=${donateAmount || '101'}&cu=INR&tn=${encodeURIComponent(donatePurpose || 'Temple Donation')}`} 
+                            size={140} 
+                            level="M" 
+                          />
+                          <div className="mt-2 text-xs font-bold text-gray-700">
+                            Scan with GPay / PhonePe / Paytm
+                          </div>
+                          <div className="text-[10px] text-gray-400 font-bold">
+                            Amount: ₹{donateAmount || '101'}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              try {
+                                await axios.post(`${API_URL}/services/donate`, {
+                                  user_name: donateDevoteeName || userDashboard?.user?.name || 'Devotee',
+                                  amount: Number(donateAmount) || 101
+                                });
+                                setDonateSuccess(true);
+                              } catch(e) {}
+                            }}
+                            className="mt-3 bg-green-600 text-white font-bold py-1.5 px-4 rounded-lg text-xs hover:bg-green-700 transition"
+                          >
+                            {isHindi ? "भुगतान पूर्ण हुआ (रिकॉर्ड करें)" : "I Have Paid (Record Transaction)"}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
