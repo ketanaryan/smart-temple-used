@@ -74,8 +74,74 @@ function App() {
   const [showUpiQr, setShowUpiQr] = useState(false);
   const [lostFoundData, setLostFoundData] = useState<any[]>([]);
   const [parkingData, setParkingData] = useState<any>(null);
+  const [parkingZone, setParkingZone] = useState<'A' | 'B' | 'C'>('A');
+  const [parkingSelectedSlot, setParkingSelectedSlot] = useState<string>('');
+  const [parkingVehicleType, setParkingVehicleType] = useState<string>('4-Wheeler');
+  const [parkingVehicleNum, setParkingVehicleNum] = useState<string>('');
+  const [parkingDriverName, setParkingDriverName] = useState<string>('');
+  const [parkingPhone, setParkingPhone] = useState<string>('');
+  const [parkingPass, setParkingPass] = useState<any>(null);
+  const [isReservingParking, setIsReservingParking] = useState<boolean>(false);
+  const [parkingError, setParkingError] = useState<string>('');
   const [lfType, setLfType] = useState('child');
   const [lfDesc, setLfDesc] = useState('');
+
+  const handleSelectParkingZone = (zoneId: 'A' | 'B' | 'C') => {
+    setParkingZone(zoneId);
+    setParkingSelectedSlot('');
+    setParkingError('');
+    if (zoneId === 'A') setParkingVehicleType('4-Wheeler');
+    else if (zoneId === 'B') setParkingVehicleType('2-Wheeler');
+    else if (zoneId === 'C') setParkingVehicleType('VIP & Divyang');
+  };
+
+  const handleReserveParking = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setParkingError('');
+    if (!parkingSelectedSlot) {
+      setParkingError(isHindi ? 'कृपया ऊपर दिए गए नक्शे में से एक खाली (हरा) स्लॉट चुनें।' : 'Please select an available (green) slot on the parking map.');
+      return;
+    }
+    if (!parkingVehicleNum.trim()) {
+      setParkingError(isHindi ? 'कृपया अपने वाहन का नंबर दर्ज करें (उदा. MH 02 CZ 4589)।' : 'Please enter vehicle number plate (e.g. MH 02 CZ 4589).');
+      return;
+    }
+    if (!parkingDriverName.trim()) {
+      setParkingError(isHindi ? 'कृपया चालक / श्रद्धालु का नाम दर्ज करें।' : 'Please enter driver / devotee name.');
+      return;
+    }
+
+    setIsReservingParking(true);
+    try {
+      const res = await axios.post(`${API_URL}/services/parking/book`, {
+        vehicle_type: parkingVehicleType,
+        vehicle_number: parkingVehicleNum.trim().toUpperCase(),
+        driver_name: parkingDriverName.trim(),
+        phone: parkingPhone.trim() || undefined,
+        zone_id: parkingZone,
+        slot_name: parkingSelectedSlot
+      });
+
+      if (res.data.success && res.data.pass) {
+        setParkingPass(res.data.pass);
+        setParkingData(res.data);
+      }
+    } catch (err: any) {
+      setParkingError(err.response?.data?.detail || 'Slot reservation failed. Please try again.');
+    } finally {
+      setIsReservingParking(false);
+    }
+  };
+
+  const handleResetParking = () => {
+    setParkingPass(null);
+    setParkingSelectedSlot('');
+    setParkingVehicleNum('');
+    setParkingDriverName('');
+    setParkingPhone('');
+    setParkingError('');
+    fetchServices();
+  };
   
   const fetchServices = async () => {
     try {
@@ -1548,8 +1614,8 @@ function App() {
       {/* Dynamic Services Modals */}
       {activeServiceModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300">
-          <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden relative border border-gray-100">
-            <button onClick={() => {setActiveServiceModal(null); setSosSent(false);}} className="absolute top-4 right-4 text-gray-400 hover:text-gray-900 bg-gray-100 rounded-full p-2"><X className="w-5 h-5"/></button>
+          <div className={`bg-white w-full ${activeServiceModal === 'parking' ? 'max-w-2xl' : 'max-w-md'} rounded-3xl shadow-2xl overflow-hidden relative border border-gray-100 max-h-[92vh] flex flex-col`}>
+            <button onClick={() => {setActiveServiceModal(null); setSosSent(false); setParkingError('');}} className="absolute top-4 right-4 text-gray-400 hover:text-gray-900 bg-gray-100 rounded-full p-2 z-20"><X className="w-5 h-5"/></button>
             
             {activeServiceModal === 'sos' && (
               <div className="p-8 text-center">
@@ -1940,27 +2006,464 @@ function App() {
               </div>
             )}
 
-            {activeServiceModal === 'parking' && (
-              <div className="p-8 text-center">
-                <h3 className="text-2xl font-black text-gray-900 mb-2">Smart Parking</h3>
-                <p className="text-gray-500 mb-6 text-sm font-medium">Real-time availability of temple parking lots.</p>
-                
-                <div className="mb-8">
-                  <div className="flex justify-between text-sm font-black mb-2 text-gray-700">
-                    <span>Capacity</span>
-                    <span>{parkingData ? Math.round((parkingData.booked/parkingData.total)*100) : 0}% Full</span>
-                  </div>
-                  <div className="w-full bg-gray-100 rounded-full h-4 overflow-hidden shadow-inner">
-                    <div className="bg-blue-500 h-4 rounded-full" style={{width: `${parkingData ? (parkingData.booked/parkingData.total)*100 : 0}%`}}></div>
-                  </div>
-                  <div className="text-xs text-gray-500 mt-2 font-bold">{parkingData ? parkingData.total - parkingData.booked : 0} Spots Remaining</div>
-                </div>
+            {activeServiceModal === 'parking' && (() => {
+              const activeZone = parkingData?.zones?.[parkingZone] || {
+                name: parkingZone === 'A' ? 'Zone A - North Gate' : parkingZone === 'B' ? 'Zone B - East Gate' : 'Zone C - Sanctum VIP',
+                type: parkingZone === 'A' ? '4-Wheeler (Car / SUV)' : parkingZone === 'B' ? '2-Wheeler (Bike / Scooter)' : 'VIP & Divyang (Accessible)',
+                description: parkingZone === 'A' ? 'Covered Ground Parking with Automated Boom Barrier #1' : parkingZone === 'B' ? 'Two-Wheeler Dedicated Parking Ground with Barrier #2' : 'Direct Ramp Access to Sanctum Sanctorum',
+                total: parkingZone === 'C' ? 8 : 16,
+                occupied_slots: parkingZone === 'A' ? ['A-02', 'A-03', 'A-06', 'A-08', 'A-11', 'A-14', 'A-15'] : parkingZone === 'B' ? ['B-01', 'B-04', 'B-05', 'B-09', 'B-10', 'B-13'] : ['C-02', 'C-05'],
+                gate: parkingZone === 'A' ? 'North Entry Barrier #1' : parkingZone === 'B' ? 'East Gate Barrier #2' : 'VIP Priority Gate #3'
+              };
 
-                <button onClick={async () => {
-                    try { await axios.post(`${API_URL}/services/parking/book`); alert("Parking slot reserved!"); fetchServices(); } catch(e:any) {alert(e.response?.data?.detail || "Error");}
-                }} className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white font-black rounded-xl shadow-md active:scale-95 transition tracking-wide">Reserve Parking Slot</button>
-              </div>
-            )}
+              const occupiedList: string[] = activeZone.occupied_slots || [];
+              const totalSlotsCount: number = activeZone.total || (parkingZone === 'C' ? 8 : 16);
+              const allSlots = Array.from({ length: totalSlotsCount }, (_, idx) => {
+                const num = String(idx + 1).padStart(2, '0');
+                return `${parkingZone}-${num}`;
+              });
+              const halfCount = Math.ceil(totalSlotsCount / 2);
+              const row1Slots = allSlots.slice(0, halfCount);
+              const row2Slots = allSlots.slice(halfCount);
+              const vacantCount = Math.max(0, totalSlotsCount - occupiedList.length);
+              const occupancyPercent = Math.min(100, Math.round((occupiedList.length / totalSlotsCount) * 100));
+
+              return (
+                <div className="p-5 md:p-7 flex flex-col max-h-[85vh] overflow-y-auto">
+                  {/* Modal Header */}
+                  <div className="flex items-center justify-between border-b border-gray-100 pb-3 mb-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center font-bold">
+                        <Car className="w-5 h-5 text-blue-600" />
+                      </div>
+                      <div>
+                        <h3 className="text-lg md:text-xl font-black text-gray-900 leading-tight">
+                          {isHindi ? "स्मार्ट पार्किंग एवं लाइव स्लॉट बुकिंग" : "Smart Parking & Slot Reservation"}
+                        </h3>
+                        <p className="text-gray-500 text-[11px] font-medium">
+                          {isHindi ? "वास्तविक समय में खाली स्लॉट चुनें और बूम बैरियर ई-पास प्राप्त करें" : "Live sensor map • Select a vacant bay & get barrier e-pass"}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {parkingPass ? (
+                    /* PARKING PASS VIEW */
+                    <div className="flex flex-col gap-4 animate-in fade-in">
+                      {/* Success Alert Banner */}
+                      <div className="bg-emerald-50 border-2 border-emerald-300 rounded-2xl p-3.5 flex items-center gap-3">
+                        <div className="w-10 h-10 bg-emerald-600 text-white rounded-xl flex items-center justify-center flex-shrink-0 shadow-sm">
+                          <CheckCircle2 className="w-6 h-6" />
+                        </div>
+                        <div>
+                          <div className="text-sm font-black text-emerald-950">
+                            {isHindi ? "पार्किंग स्लॉट सफलतापूर्वक आरक्षित हो गया!" : "Parking Bay Confirmed Successfully!"}
+                          </div>
+                          <div className="text-[11px] text-emerald-700 font-medium">
+                            {isHindi ? "प्रवेश द्वार (बूम बैरियर) पर यह डिजिटल ई-पास दिखाएं या स्कैन करें।" : "Present or scan this QR pass at the entrance camera."}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Official Digital Parking Pass Card */}
+                      <div className="border-2 border-blue-200 rounded-2xl bg-gradient-to-b from-blue-50/70 via-white to-blue-50/30 p-5 shadow-sm relative overflow-hidden">
+                        {/* Temple Trust Watermark/Header */}
+                        <div className="flex items-center justify-between border-b-2 border-dashed border-gray-200 pb-3 mb-4">
+                          <div>
+                            <div className="text-[10px] font-black uppercase tracking-widest text-blue-700">
+                              श्री काशी विश्वनाथ मंदिर न्यास • SMART TEMPLE
+                            </div>
+                            <div className="text-base font-black text-gray-900 tracking-tight">
+                              DIGITAL PARKING E-PASS
+                            </div>
+                            <div className="text-[11px] text-gray-500 font-mono mt-0.5">
+                              PASS ID: <span className="font-bold text-gray-900">{parkingPass.pass_id}</span>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <span className="text-[10px] font-black uppercase px-2.5 py-1 bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-full tracking-wider">
+                              ● ACTIVE / CONFIRMED
+                            </span>
+                            <div className="text-[10px] text-gray-400 font-bold mt-1">
+                              {parkingPass.booked_at}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Allocated Bay & Gate Highlights */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+                          {/* Bay Badge */}
+                          <div className="bg-blue-600 text-white rounded-xl p-3.5 text-center flex flex-col justify-center shadow-md">
+                            <div className="text-[10px] uppercase font-black tracking-widest text-blue-200">
+                              RESERVED BAY NUMBER
+                            </div>
+                            <div className="text-3xl font-black tracking-tight my-0.5">
+                              {parkingPass.slot_name}
+                            </div>
+                            <div className="text-xs font-bold text-blue-100">
+                              {parkingPass.zone_name}
+                            </div>
+                          </div>
+
+                          {/* Gate Barrier */}
+                          <div className="bg-white border-2 border-blue-100 rounded-xl p-3.5 flex flex-col justify-center">
+                            <div className="text-[10px] uppercase font-black tracking-wider text-gray-400">
+                              DESIGNATED ENTRY BARRIER
+                            </div>
+                            <div className="text-sm font-black text-gray-900 mt-0.5">
+                              {parkingPass.gate}
+                            </div>
+                            <div className="text-[11px] font-bold text-emerald-600 mt-1 flex items-center gap-1">
+                              <Check className="w-3.5 h-3.5" />
+                              <span>{parkingPass.valid_until}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Vehicle Plate & QR scanner row */}
+                        <div className="bg-white rounded-xl border border-gray-200 p-3.5 mb-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-inner">
+                          <div className="flex items-center gap-3">
+                            {/* HSRP Plate Mock */}
+                            <div className="border-2 border-gray-900 bg-white rounded-lg px-3 py-1.5 flex items-center gap-2 shadow-sm font-mono font-black text-sm text-gray-900 tracking-wider">
+                              <span className="bg-blue-800 text-white text-[8px] font-black px-1 py-0.5 rounded leading-none">IND</span>
+                              <span>{parkingPass.vehicle_number}</span>
+                            </div>
+                            <div>
+                              <div className="text-xs font-black text-gray-800">{parkingPass.driver_name}</div>
+                              <div className="text-[10px] text-gray-500 font-medium">{parkingPass.vehicle_type} • 📞 {parkingPass.phone || 'Phone N/A'}</div>
+                            </div>
+                          </div>
+
+                          {/* QR Code */}
+                          <div className="flex items-center gap-2 self-center sm:self-auto bg-gray-50 p-2 rounded-xl border border-gray-200">
+                            <QRCodeSVG
+                              value={`TEMPLE_PARK:${parkingPass.pass_id}:${parkingPass.slot_name}:${parkingPass.vehicle_number}`}
+                              size={58}
+                              level="M"
+                            />
+                            <div className="text-[9px] text-gray-500 font-bold max-w-[85px] leading-tight">
+                              Scan at barrier camera for entry
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="text-[10px] text-gray-400 text-center font-medium">
+                          * Please park only within yellow markings at slot {parkingPass.slot_name}. Keep pass ready for automated exit scan.
+                        </div>
+                      </div>
+
+                      {/* Action Buttons */}
+                      <div className="flex gap-2.5">
+                        <button
+                          type="button"
+                          onClick={() => window.print()}
+                          className="flex-1 py-3 bg-gray-100 hover:bg-gray-200 text-gray-800 font-bold rounded-xl text-xs transition flex items-center justify-center gap-1.5 active:scale-95"
+                        >
+                          <FileText className="w-4 h-4" />
+                          <span>{isHindi ? "पास प्रिंट / सहेजें" : "Print / Save Pass"}</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={handleResetParking}
+                          className="flex-1 py-3 bg-blue-600 hover:bg-blue-700 text-white font-black rounded-xl text-xs transition shadow-md active:scale-95 flex items-center justify-center gap-1.5"
+                        >
+                          <Car className="w-4 h-4" />
+                          <span>{isHindi ? "अन्य वाहन बुक करें" : "Book Another Slot"}</span>
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    /* INTERACTIVE MAP & BOOKING FORM VIEW */
+                    <div className="flex flex-col gap-3">
+                      {/* Zone Tabs */}
+                      <div className="grid grid-cols-3 gap-2">
+                        {[
+                          { id: 'A', label: isHindi ? "ज़ोन A (कार/SUV)" : "Zone A (Cars)", desc: "North Gate", icon: "🚗" },
+                          { id: 'B', label: isHindi ? "ज़ोन B (बाइक)" : "Zone B (Bikes)", desc: "East Gate", icon: "🏍️" },
+                          { id: 'C', label: isHindi ? "ज़ोन C (VIP)" : "Zone C (VIP)", desc: "Sanctum Gate", icon: "♿" }
+                        ].map(z => (
+                          <button
+                            key={z.id}
+                            type="button"
+                            onClick={() => handleSelectParkingZone(z.id as any)}
+                            className={`p-2.5 rounded-2xl border-2 text-left transition-all ${
+                              parkingZone === z.id
+                                ? 'bg-blue-50 border-blue-500 text-blue-900 shadow-sm'
+                                : 'bg-white border-gray-100 text-gray-600 hover:bg-gray-50'
+                            }`}
+                          >
+                            <div className="text-xs md:text-sm font-black flex items-center gap-1">
+                              <span>{z.icon}</span>
+                              <span>{z.label}</span>
+                            </div>
+                            <div className="text-[10px] text-gray-400 font-bold mt-0.5">{z.desc}</div>
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* Legend & Stats Banner */}
+                      <div className="flex flex-wrap items-center justify-between gap-2 bg-gray-50 p-2.5 rounded-xl border border-gray-100">
+                        <div className="flex items-center gap-3 text-[11px] font-bold">
+                          <div className="flex items-center gap-1.5">
+                            <span className="w-3 h-3 rounded-md bg-emerald-100 border-2 border-emerald-400 inline-block"></span>
+                            <span className="text-gray-700">{isHindi ? "खाली (चुनें)" : "Available"} ({vacantCount})</span>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="w-3 h-3 rounded-md bg-red-100 border-2 border-red-400 inline-block"></span>
+                            <span className="text-gray-700">{isHindi ? "भरा हुआ" : "Occupied"} ({occupiedList.length})</span>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="w-3 h-3 rounded-md bg-blue-600 border-2 border-blue-600 inline-block"></span>
+                            <span className="text-gray-700">{isHindi ? "चयनित" : "Selected"}</span>
+                          </div>
+                        </div>
+
+                        {/* Occupancy Progress Bar */}
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] font-bold text-gray-500">{occupancyPercent}% Full</span>
+                          <div className="w-16 bg-gray-200 rounded-full h-2 overflow-hidden">
+                            <div className="bg-blue-500 h-2 rounded-full" style={{ width: `${occupancyPercent}%` }}></div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Interactive Visual Parking Layout */}
+                      <div className="bg-slate-900/5 border-2 border-dashed border-gray-200 rounded-2xl p-3">
+                        <div className="text-[10px] font-black uppercase text-gray-400 tracking-wider mb-2 text-center">
+                          {activeZone.name} • {isHindi ? "इंटरैक्टिव पार्किंग लेआउट" : "Interactive Parking Layout"}
+                        </div>
+
+                        {/* Top Bay Row */}
+                        <div className="grid grid-cols-4 sm:grid-cols-8 gap-1.5">
+                          {row1Slots.map(slotId => {
+                            const isOccupied = occupiedList.includes(slotId);
+                            const isSelected = parkingSelectedSlot === slotId;
+                            return (
+                              <button
+                                key={slotId}
+                                type="button"
+                                disabled={isOccupied}
+                                onClick={() => {
+                                  setParkingSelectedSlot(slotId);
+                                  setParkingError('');
+                                }}
+                                className={`p-2 rounded-xl border-2 font-bold flex flex-col items-center justify-between min-h-[58px] transition-all select-none ${
+                                  isOccupied
+                                    ? 'bg-red-50/70 border-red-200 text-red-400 cursor-not-allowed opacity-75'
+                                    : isSelected
+                                    ? 'bg-blue-600 border-blue-600 text-white shadow-md shadow-blue-200 scale-105 ring-2 ring-blue-300 z-10'
+                                    : 'bg-emerald-50/90 hover:bg-emerald-100 border-emerald-300 hover:border-emerald-500 text-emerald-800 cursor-pointer hover:scale-105 active:scale-95'
+                                }`}
+                              >
+                                <span className={`text-[11px] font-black tracking-wider ${isSelected ? 'text-white' : isOccupied ? 'text-red-500' : 'text-emerald-900'}`}>
+                                  {slotId}
+                                </span>
+                                {isOccupied ? (
+                                  <span className="text-[8px] font-black uppercase text-red-500 bg-red-100/80 px-1 py-0.5 rounded">
+                                    {isHindi ? "भरा" : "FULL"}
+                                  </span>
+                                ) : isSelected ? (
+                                  <span className="text-[8px] font-black uppercase text-blue-100 bg-blue-700 px-1 py-0.5 rounded flex items-center gap-0.5">
+                                    <Check className="w-2 h-2" />
+                                    {isHindi ? "चयन" : "PICK"}
+                                  </span>
+                                ) : (
+                                  <span className="text-[8px] font-black uppercase text-emerald-700 bg-emerald-100/90 px-1 py-0.5 rounded">
+                                    {isHindi ? "खाली" : "OPEN"}
+                                  </span>
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
+
+                        {/* Middle Driveway / Corridor */}
+                        <div className="my-2 py-1.5 px-3 bg-white/80 rounded-xl border border-dashed border-gray-300 flex items-center justify-between text-[10px] font-black tracking-widest text-gray-400 uppercase select-none">
+                          <span>⬅ ENTRY</span>
+                          <span className="flex items-center gap-1.5 text-blue-600 font-bold">
+                            <Car className="w-3.5 h-3.5" />
+                            <span>DRIVEWAY • SPEED LIMIT 10 KM/H</span>
+                          </span>
+                          <span>EXIT ➡</span>
+                        </div>
+
+                        {/* Bottom Bay Row */}
+                        <div className="grid grid-cols-4 sm:grid-cols-8 gap-1.5">
+                          {row2Slots.map(slotId => {
+                            const isOccupied = occupiedList.includes(slotId);
+                            const isSelected = parkingSelectedSlot === slotId;
+                            return (
+                              <button
+                                key={slotId}
+                                type="button"
+                                disabled={isOccupied}
+                                onClick={() => {
+                                  setParkingSelectedSlot(slotId);
+                                  setParkingError('');
+                                }}
+                                className={`p-2 rounded-xl border-2 font-bold flex flex-col items-center justify-between min-h-[58px] transition-all select-none ${
+                                  isOccupied
+                                    ? 'bg-red-50/70 border-red-200 text-red-400 cursor-not-allowed opacity-75'
+                                    : isSelected
+                                    ? 'bg-blue-600 border-blue-600 text-white shadow-md shadow-blue-200 scale-105 ring-2 ring-blue-300 z-10'
+                                    : 'bg-emerald-50/90 hover:bg-emerald-100 border-emerald-300 hover:border-emerald-500 text-emerald-800 cursor-pointer hover:scale-105 active:scale-95'
+                                }`}
+                              >
+                                <span className={`text-[11px] font-black tracking-wider ${isSelected ? 'text-white' : isOccupied ? 'text-red-500' : 'text-emerald-900'}`}>
+                                  {slotId}
+                                </span>
+                                {isOccupied ? (
+                                  <span className="text-[8px] font-black uppercase text-red-500 bg-red-100/80 px-1 py-0.5 rounded">
+                                    {isHindi ? "भरा" : "FULL"}
+                                  </span>
+                                ) : isSelected ? (
+                                  <span className="text-[8px] font-black uppercase text-blue-100 bg-blue-700 px-1 py-0.5 rounded flex items-center gap-0.5">
+                                    <Check className="w-2 h-2" />
+                                    {isHindi ? "चयन" : "PICK"}
+                                  </span>
+                                ) : (
+                                  <span className="text-[8px] font-black uppercase text-emerald-700 bg-emerald-100/90 px-1 py-0.5 rounded">
+                                    {isHindi ? "खाली" : "OPEN"}
+                                  </span>
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Devotee & Vehicle Reservation Form */}
+                      <form onSubmit={handleReserveParking} className="mt-2 pt-3 border-t border-gray-100 flex flex-col gap-3">
+                        {/* Selected Slot Indicator */}
+                        {parkingSelectedSlot ? (
+                          <div className="bg-blue-50 border border-blue-200 rounded-xl p-2.5 flex items-center justify-between text-xs">
+                            <div className="flex items-center gap-2">
+                              <div className="w-7 h-7 bg-blue-600 text-white rounded-lg flex items-center justify-center font-black text-xs shadow-sm">
+                                {parkingSelectedSlot}
+                              </div>
+                              <div>
+                                <div className="font-black text-blue-900">
+                                  {isHindi ? `चयनित पार्किंग स्लॉट: ${parkingSelectedSlot}` : `Selected Bay: ${parkingSelectedSlot}`}
+                                </div>
+                                <div className="text-[10px] text-blue-700 font-medium">
+                                  {activeZone.name} • {activeZone.gate}
+                                </div>
+                              </div>
+                            </div>
+                            <span className="text-[10px] bg-blue-200 text-blue-800 font-bold px-2 py-0.5 rounded-full">
+                              {isHindi ? "4 घंटे निःशुल्क" : "4 Hrs Free"}
+                            </span>
+                          </div>
+                        ) : (
+                          <div className="bg-amber-50 border border-amber-200 rounded-xl p-2.5 text-xs text-amber-800 font-bold flex items-center gap-2">
+                            <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                            <span>{isHindi ? "कृपया ऊपर दिए गए लेआउट में से किसी भी खाली (हरे) स्लॉट पर क्लिक करें।" : "Click any vacant (green) slot on the map above to select your bay."}</span>
+                          </div>
+                        )}
+
+                        {/* Vehicle Number & Category */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                          {/* Number Plate */}
+                          <div>
+                            <label className="block text-[11px] font-black uppercase text-gray-500 mb-1">
+                              {isHindi ? "वाहन नंबर प्लेट *" : "Vehicle Number Plate *"}
+                            </label>
+                            <div className="flex items-center border-2 border-gray-200 rounded-xl bg-white overflow-hidden focus-within:border-blue-500 transition shadow-sm">
+                              <div className="bg-blue-900 text-white font-black text-[9px] px-2 py-2 flex flex-col items-center justify-center border-r border-blue-800 select-none">
+                                <span className="leading-none text-[8px]">🇮🇳</span>
+                                <span className="tracking-widest font-mono text-[8px]">IND</span>
+                              </div>
+                              <input
+                                type="text"
+                                value={parkingVehicleNum}
+                                onChange={(e) => setParkingVehicleNum(e.target.value.toUpperCase())}
+                                placeholder="e.g. MH 02 CZ 4589"
+                                maxLength={16}
+                                className="flex-1 p-2 outline-none font-mono font-black text-xs uppercase text-gray-900 tracking-wider"
+                                required
+                              />
+                            </div>
+                          </div>
+
+                          {/* Vehicle Category */}
+                          <div>
+                            <label className="block text-[11px] font-black uppercase text-gray-500 mb-1">
+                              {isHindi ? "वाहन का प्रकार" : "Vehicle Category"}
+                            </label>
+                            <select
+                              value={parkingVehicleType}
+                              onChange={(e) => setParkingVehicleType(e.target.value)}
+                              className="w-full p-2 border-2 border-gray-200 rounded-xl bg-white font-bold text-xs text-gray-800 outline-none focus:border-blue-500 transition"
+                            >
+                              <option value="4-Wheeler">🚗 4-Wheeler (Car / SUV / EV)</option>
+                              <option value="2-Wheeler">🏍️ 2-Wheeler (Motorcycle / Scooter)</option>
+                              <option value="VIP & Divyang">♿ VIP / Divyang Accessible</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        {/* Driver Name & Phone */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                          <div>
+                            <label className="block text-[11px] font-black uppercase text-gray-500 mb-1">
+                              {isHindi ? "चालक / श्रद्धालु का नाम *" : "Driver / Devotee Name *"}
+                            </label>
+                            <input
+                              type="text"
+                              value={parkingDriverName}
+                              onChange={(e) => setParkingDriverName(e.target.value)}
+                              placeholder={userDashboard?.user?.name || "e.g. Ketan Sharma"}
+                              className="w-full p-2 border-2 border-gray-200 rounded-xl bg-white text-xs font-bold text-gray-800 outline-none focus:border-blue-500 transition"
+                              required
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[11px] font-black uppercase text-gray-500 mb-1">
+                              {isHindi ? "मोबाइल नंबर (वैकल्पिक)" : "Contact Mobile (Optional)"}
+                            </label>
+                            <input
+                              type="tel"
+                              value={parkingPhone}
+                              onChange={(e) => setParkingPhone(e.target.value)}
+                              placeholder="e.g. 9876543210"
+                              maxLength={14}
+                              className="w-full p-2 border-2 border-gray-200 rounded-xl bg-white text-xs font-bold text-gray-800 outline-none focus:border-blue-500 transition"
+                            />
+                          </div>
+                        </div>
+
+                        {parkingError && (
+                          <div className="bg-red-50 border border-red-200 text-red-700 text-xs font-bold p-2.5 rounded-xl flex items-center gap-2">
+                            <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+                            <span>{parkingError}</span>
+                          </div>
+                        )}
+
+                        <button
+                          type="submit"
+                          disabled={isReservingParking}
+                          className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 text-white font-black text-sm rounded-xl shadow-md transition flex items-center justify-center gap-2 active:scale-95 disabled:opacity-60"
+                        >
+                          {isReservingParking ? (
+                            <span>{isHindi ? "स्लॉट आरक्षित किया जा रहा है..." : "Reserving Slot..."}</span>
+                          ) : (
+                            <>
+                              <Car className="w-4 h-4" />
+                              <span>
+                                {isHindi
+                                  ? `पार्किंग स्लॉट ${parkingSelectedSlot || ''} आरक्षित करें`
+                                  : `Confirm & Reserve Slot ${parkingSelectedSlot || ''}`}
+                              </span>
+                            </>
+                          )}
+                        </button>
+                      </form>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
 
             {activeServiceModal === 'lostfound' && (
               <div className="p-8 flex flex-col h-[500px]">

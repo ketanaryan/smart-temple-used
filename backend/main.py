@@ -528,7 +528,33 @@ def get_temple_bookings(temple_id: int, db: Session = Depends(get_db)):
 # --- DYNAMIC SERVICES IN-MEMORY DB ---
 # For hackathon demo purposes, these are kept in-memory
 global_sos_alerts = []
-global_parking = {"total": 500, "booked": 320}
+global_parking_zones = {
+    "A": {
+        "name": "Zone A - North Gate",
+        "type": "4-Wheeler (Car / SUV)",
+        "description": "Covered Ground Parking with Automated Boom Barrier #1",
+        "total": 16,
+        "occupied_slots": ["A-02", "A-03", "A-06", "A-08", "A-11", "A-14", "A-15"],
+        "gate": "North Entry Barrier #1"
+    },
+    "B": {
+        "name": "Zone B - East Gate",
+        "type": "2-Wheeler (Bike / Scooter)",
+        "description": "Two-Wheeler Dedicated Parking Ground with Barrier #2",
+        "total": 16,
+        "occupied_slots": ["B-01", "B-04", "B-05", "B-09", "B-10", "B-13"],
+        "gate": "East Gate Barrier #2"
+    },
+    "C": {
+        "name": "Zone C - Sanctum VIP",
+        "type": "VIP & Divyang (Accessible)",
+        "description": "Direct Ramp Access to Sanctum Sanctorum",
+        "total": 8,
+        "occupied_slots": ["C-02", "C-05"],
+        "gate": "VIP Priority Gate #3"
+    }
+}
+global_parking_reservations = []
 global_donations = []
 global_lost_found = [
     {"id": 1, "type": "child", "desc": "Boy, 5 yrs, red shirt", "status": "searching"},
@@ -539,6 +565,14 @@ from pydantic import BaseModel
 class SOSRequest(BaseModel):
     user_name: str
     location: str
+
+class ParkingBookingRequest(BaseModel):
+    vehicle_type: Optional[str] = "4-Wheeler"
+    vehicle_number: Optional[str] = "MH 01 AB 1234"
+    driver_name: Optional[str] = "Devotee"
+    phone: Optional[str] = None
+    zone_id: Optional[str] = "A"
+    slot_name: Optional[str] = None
 
 class DonationRequest(BaseModel):
     user_name: str
@@ -562,14 +596,74 @@ def get_sos():
 
 @app.get("/services/parking")
 def get_parking():
-    return global_parking
+    total_slots = sum(z["total"] for z in global_parking_zones.values())
+    booked_slots = sum(len(z["occupied_slots"]) for z in global_parking_zones.values())
+    return {
+        "total": total_slots,
+        "booked": booked_slots,
+        "available": total_slots - booked_slots,
+        "zones": global_parking_zones,
+        "reservations": global_parking_reservations[-15:]
+    }
 
 @app.post("/services/parking/book")
-def book_parking():
-    if global_parking["booked"] < global_parking["total"]:
-        global_parking["booked"] += 1
-        return {"success": True, "booked": global_parking["booked"]}
-    raise HTTPException(status_code=400, detail="Parking Full")
+def book_parking(req: Optional[ParkingBookingRequest] = None):
+    # Fallback if called with empty body
+    if req is None or not req.slot_name:
+        zone = global_parking_zones["A"]
+        avail = [f"A-{i:02d}" for i in range(1, zone["total"] + 1) if f"A-{i:02d}" not in zone["occupied_slots"]]
+        if not avail:
+            raise HTTPException(status_code=400, detail="Zone A is completely full")
+        slot_name = avail[0]
+        vehicle_type = "4-Wheeler (Car / SUV)"
+        vehicle_number = "MH 01 AB 1234"
+        driver_name = "Devotee"
+        phone = "N/A"
+        zone_id = "A"
+    else:
+        zone_id = (req.zone_id or "A").upper()
+        if zone_id not in global_parking_zones:
+            raise HTTPException(status_code=400, detail=f"Invalid parking zone: {zone_id}")
+        zone = global_parking_zones[zone_id]
+        slot_name = req.slot_name.strip().upper()
+        vehicle_type = req.vehicle_type or "4-Wheeler"
+        vehicle_number = (req.vehicle_number or "MH 01 AB 1234").strip().upper()
+        driver_name = (req.driver_name or "Devotee").strip()
+        phone = (req.phone or "N/A").strip()
+
+    if slot_name in zone["occupied_slots"]:
+        raise HTTPException(status_code=400, detail=f"Slot {slot_name} has just been occupied. Please pick another available (green) slot.")
+
+    zone["occupied_slots"].append(slot_name)
+    pass_id = f"PRK-{datetime.now().strftime('%Y%m%d')}-{slot_name.replace('-', '')}-{uuid.uuid4().hex[:4].upper()}"
+    pass_record = {
+        "pass_id": pass_id,
+        "vehicle_type": vehicle_type,
+        "vehicle_number": vehicle_number,
+        "driver_name": driver_name,
+        "phone": phone,
+        "zone_id": zone_id,
+        "zone_name": zone["name"],
+        "slot_name": slot_name,
+        "gate": zone["gate"],
+        "booked_at": datetime.now().strftime("%d %b %Y, %I:%M %p"),
+        "valid_until": "Valid 4 Hours from entry",
+        "status": "CONFIRMED"
+    }
+    global_parking_reservations.append(pass_record)
+
+    total_slots = sum(z["total"] for z in global_parking_zones.values())
+    booked_slots = sum(len(z["occupied_slots"]) for z in global_parking_zones.values())
+
+    return {
+        "success": True,
+        "message": f"Parking Slot {slot_name} confirmed successfully!",
+        "pass": pass_record,
+        "total": total_slots,
+        "booked": booked_slots,
+        "available": total_slots - booked_slots,
+        "zones": global_parking_zones
+    }
 
 @app.post("/services/donate")
 def make_donation(req: DonationRequest):
