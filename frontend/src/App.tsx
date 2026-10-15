@@ -49,7 +49,14 @@ function App() {
   const [currentToken, setCurrentToken] = useState('');
   
   
-  const isHindi = localStorage.getItem('lang') === 'hi';
+  const [lang, setLang] = useState<string>(localStorage.getItem('lang') || 'en');
+  const isHindi = lang === 'hi';
+  const [isLoadingDashboard, setIsLoadingDashboard] = useState<boolean>(true);
+
+  const changeLanguage = (newLang: 'en' | 'hi') => {
+    localStorage.setItem('lang', newLang);
+    setLang(newLang);
+  };
   const [activeTab, setActiveTab] = useState(localStorage.getItem('activeTab') || 'home'); // 'home' | 'devotee' | 'staff' | 'admin'
   const [isAdmin, setIsAdmin] = useState(localStorage.getItem('adminToken') === 'true');
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
@@ -238,7 +245,10 @@ function App() {
 
   const fetchUserDashboard = async () => {
     const token = localStorage.getItem('token');
-    if (!token) return;
+    if (!token) {
+      setIsLoadingDashboard(false);
+      return;
+    }
     try {
       const res = await axios.get(`${API_URL}/users/me/dashboard`, {
         headers: { Authorization: `Bearer ${token}` }
@@ -255,6 +265,8 @@ function App() {
     } catch (e) {
       console.error("Session expired or invalid", e);
       localStorage.removeItem('token');
+    } finally {
+      setIsLoadingDashboard(false);
     }
   };
 
@@ -576,27 +588,46 @@ function App() {
         <div className={`${isMobileMenuOpen ? 'flex' : 'hidden'} md:flex flex-col md:flex-row absolute md:relative top-[100%] left-0 w-full md:w-auto bg-white md:bg-transparent shadow-lg md:shadow-none p-6 md:p-0 gap-6 md:gap-6 items-center text-sm font-semibold border-t md:border-0 border-gray-100 z-50 animate-in slide-in-from-top-2 md:animate-none`}>
           <button 
             onClick={() => { setActiveTab('home'); setIsMobileMenuOpen(false); }}
-            className={`${activeTab === 'home' ? 'text-orange-500 border-b-2 border-orange-500 pb-1' : 'hover:text-orange-500 text-gray-600'}`}
+            className={`${activeTab === 'home' ? 'text-orange-500 border-b-2 border-orange-500 pb-1 font-black' : 'hover:text-orange-500 text-gray-600'}`}
           >
-            Home
+            {isHindi ? "होम" : "Home"}
           </button>
           <button 
             onClick={() => { setActiveTab('devotee'); setIsMobileMenuOpen(false); }}
-            className={`${activeTab === 'devotee' ? 'text-orange-500 border-b-2 border-orange-500 pb-1' : 'hover:text-orange-500 text-gray-600'}`}
+            className={`${activeTab === 'devotee' ? 'text-orange-500 border-b-2 border-orange-500 pb-1 font-black' : 'hover:text-orange-500 text-gray-600'}`}
           >
-            Darshan Booking
+            {isHindi ? "दर्शन बुकिंग" : "Darshan Booking"}
           </button>
           <button 
             onClick={() => { setActiveTab('staff'); setIsMobileMenuOpen(false); }}
             className="hover:text-orange-500 text-gray-600 font-bold"
           >
-            Live Crowd Status
+            {isHindi ? "लाइव भीड़ स्थिति" : "Live Crowd Status"}
           </button>
+
+          {/* Instant Language Toggle in Header */}
+          <div className="flex items-center bg-gray-100 p-0.5 rounded-xl border border-gray-200 text-xs font-bold">
+            <button
+              type="button"
+              onClick={() => changeLanguage('en')}
+              className={`px-2.5 py-1 rounded-lg transition-all ${!isHindi ? 'bg-white text-gray-900 shadow-sm font-black' : 'text-gray-500 hover:text-gray-900'}`}
+            >
+              EN
+            </button>
+            <button
+              type="button"
+              onClick={() => changeLanguage('hi')}
+              className={`px-2.5 py-1 rounded-lg transition-all ${isHindi ? 'bg-orange-500 text-white shadow-sm font-black' : 'text-gray-500 hover:text-orange-600'}`}
+            >
+              हिन्दी
+            </button>
+          </div>
+
           <button 
             onClick={() => { setActiveTab('admin'); setIsMobileMenuOpen(false); }}
-            className="bg-orange-500 hover:bg-orange-600 text-white px-5 py-2.5 md:py-2 rounded-lg transition-colors flex items-center justify-center gap-2 cursor-pointer w-full md:w-auto"
+            className="bg-orange-500 hover:bg-orange-600 text-white px-5 py-2.5 md:py-2 rounded-lg transition-colors flex items-center justify-center gap-2 cursor-pointer w-full md:w-auto font-bold"
           >
-            <ShieldCheck className="w-4 h-4" /> Admin Portal
+            <ShieldCheck className="w-4 h-4" /> {isHindi ? "एडमिन पोर्टल" : "Admin Portal"}
           </button>
         </div>
       </header>
@@ -817,7 +848,14 @@ function App() {
 
                       {/* Bookings List */}
                       <div className="flex flex-col gap-3 max-h-[420px] overflow-y-auto pr-1">
-                        {bookingHistoryTab === 'active' ? (
+                        {isLoadingDashboard && !userDashboard ? (
+                          <div className="p-6 bg-orange-50/40 rounded-xl border border-dashed border-orange-200 text-center flex flex-col items-center justify-center gap-2">
+                            <div className="w-5 h-5 border-2 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
+                            <span className="text-xs font-bold text-gray-500">
+                              {isHindi ? "दर्शन विवरण लोड हो रहा है..." : "Loading bookings..."}
+                            </span>
+                          </div>
+                        ) : bookingHistoryTab === 'active' ? (
                           activeBookings.length === 0 ? (
                             <div className="text-center p-6 bg-orange-50/40 rounded-xl border border-dashed border-orange-200 text-gray-500">
                               <CalendarCheck className="w-8 h-8 mx-auto text-orange-400/80 mb-2" />
@@ -926,14 +964,14 @@ function App() {
                         <div className="grid grid-cols-2 gap-1.5 bg-white/90 p-1 rounded-lg border border-indigo-200/60">
                           <button
                             type="button"
-                            onClick={() => { localStorage.setItem('lang', 'en'); window.location.reload(); }}
+                            onClick={() => changeLanguage('en')}
                             className={`py-1 text-xs font-black rounded-md transition-all ${!isHindi ? 'bg-indigo-600 text-white shadow-sm' : 'text-gray-600 hover:text-indigo-600'}`}
                           >
                             English
                           </button>
                           <button
                             type="button"
-                            onClick={() => { localStorage.setItem('lang', 'hi'); window.location.reload(); }}
+                            onClick={() => changeLanguage('hi')}
                             className={`py-1 text-xs font-black rounded-md transition-all ${isHindi ? 'bg-indigo-600 text-white shadow-sm' : 'text-gray-600 hover:text-indigo-600'}`}
                           >
                             हिंदी
