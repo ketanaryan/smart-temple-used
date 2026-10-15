@@ -90,9 +90,10 @@ try:
             temple = db.query(models.Temple).filter(models.Temple.id == slot.temple_id).first() if slot else None
             if not slot or not temple:
                 continue
+            display_status = "CONFIRMED" if b.status in ["IN_QUEUE", "CONFIRMED", "BOOKED"] else b.status
             results.append({
                 "token": b.token_number,
-                "status": b.status,
+                "status": display_status,
                 "temple_name": temple.name,
                 "city": temple.city,
                 "date": slot.date,
@@ -218,7 +219,7 @@ try:
             slot_id=booking.slot_id,
             is_online=booking.is_online,
             token_number=token,
-            status="IN_QUEUE"
+            status="CONFIRMED"
         )
         db.add(db_booking)
         db.commit()
@@ -229,12 +230,12 @@ try:
     def get_queue_status(temple_id: int = 1, db: Session = Depends(get_db)):
         online_count = db.query(models.Booking).join(models.TimeSlot).filter(
             models.TimeSlot.temple_id == temple_id, 
-            models.Booking.status == "IN_QUEUE", 
+            models.Booking.status.in_(["IN_QUEUE", "CONFIRMED"]), 
             models.Booking.is_online == True
         ).count()
         walkin_count = db.query(models.Booking).join(models.TimeSlot).filter(
             models.TimeSlot.temple_id == temple_id, 
-            models.Booking.status == "IN_QUEUE", 
+            models.Booking.status.in_(["IN_QUEUE", "CONFIRMED"]), 
             models.Booking.is_online == False
         ).count()
         
@@ -316,7 +317,7 @@ try:
     def call_next_token(temple_id: int = 1, db: Session = Depends(get_db)):
         base_query = db.query(models.Booking).join(models.TimeSlot).filter(
             models.TimeSlot.temple_id == temple_id,
-            models.Booking.status == "IN_QUEUE"
+            models.Booking.status.in_(["IN_QUEUE", "CONFIRMED"])
         )
         online_count = base_query.filter(models.Booking.is_online == True).count()
         walkin_count = base_query.filter(models.Booking.is_online == False).count()
@@ -410,14 +411,15 @@ def get_ticket(token_number: str, db: Session = Depends(get_db)):
     slot = db.query(models.TimeSlot).filter(models.TimeSlot.id == booking.slot_id).first()
     temple = db.query(models.Temple).filter(models.Temple.id == slot.temple_id).first()
     user = db.query(models.User).filter(models.User.id == booking.user_id).first() if booking.user_id else None
+    display_status = "CONFIRMED" if booking.status in ["IN_QUEUE", "CONFIRMED", "BOOKED"] else booking.status
     return {
         'token': booking.token_number,
-        'status': booking.status,
-        'temple_name': temple.name,
-        'city': temple.city,
-        'date': slot.date,
-        'start_time': slot.start_time,
-        'end_time': slot.end_time,
+        'status': display_status,
+        'temple_name': temple.name if temple else 'Temple',
+        'city': temple.city if temple else '',
+        'date': slot.date if slot else '',
+        'start_time': slot.start_time if slot else '',
+        'end_time': slot.end_time if slot else '',
         'booking_time': booking.booking_time,
         'user_name': user.name if user else 'Walk-in Devotee'
     }

@@ -57,7 +57,8 @@ function App() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [staffSelectedTemple, setStaffSelectedTemple] = useState<number | null>(null);
 
-  const [ticketViewToken] = useState<string | null>(new URLSearchParams(window.location.search).get('ticket'));
+  const [ticketViewToken, setTicketViewToken] = useState<string | null>(new URLSearchParams(window.location.search).get('ticket'));
+  const [bookingHistoryTab, setBookingHistoryTab] = useState<'active' | 'past'>('active');
   const [ticketData, setTicketData] = useState<any>(null);
   const [activeServiceModal, setActiveServiceModal] = useState<string | null>(null);
   const [sosSent, setSosSent] = useState(false);
@@ -238,6 +239,7 @@ function App() {
       setBookedToken(res.data.token_number);
       fetchSlots(); // Refresh availability
       fetchQueueStatus(); // Refresh queue
+      fetchUserDashboard(); // Refresh devotee dashboard bookings
     } catch (e: any) {
       setBookingMessage(`Failed: ${e.response?.data?.detail || e.message}`);
     }
@@ -258,11 +260,36 @@ function App() {
   };
 
   const formatTime = (timeStr: string) => {
-    const [h, m] = timeStr.split(':');
-    const d = new Date();
-    d.setHours(parseInt(h), parseInt(m));
-    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    if (!timeStr) return '';
+    try {
+      const [h, m] = String(timeStr).split(':');
+      const d = new Date();
+      d.setHours(parseInt(h, 10), parseInt(m, 10));
+      return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    } catch {
+      return String(timeStr);
+    }
   };
+
+  const isBookingActive = (b: any) => {
+    if (!b || !b.date) return false;
+    if (b.status === 'SERVED' || b.status === 'CANCELLED' || b.status === 'COMPLETED') {
+      return false;
+    }
+    const today = getLocalDateStr();
+    const bDate = String(b.date).substring(0, 10);
+    if (bDate > today) return true;
+    if (bDate === today) {
+      const nowTime = getLocalTimeStr();
+      const endTime = b.end_time ? String(b.end_time).substring(0, 8) : (b.start_time ? String(b.start_time).substring(0, 8) : '23:59:59');
+      return endTime >= nowTime;
+    }
+    return false;
+  };
+
+  const allUserBookings = userDashboard?.bookings || [];
+  const activeBookings = allUserBookings.filter((b: any) => isBookingActive(b));
+  const pastBookings = allUserBookings.filter((b: any) => !isBookingActive(b));
 
   if (ticketViewToken) {
     return (
@@ -295,18 +322,32 @@ function App() {
                     <div className="text-lg font-black text-gray-800">{ticketData.user_name}</div>
                   </div>
                   <div className="text-right">
-                    <div className="text-xs font-bold text-gray-400 uppercase">Status</div>
-                    <div className="text-lg font-black text-green-600 bg-green-50 px-2 rounded">{ticketData.status}</div>
+                    <div className="text-xs font-bold text-gray-400 uppercase">{isHindi ? "स्थिति" : "Status"}</div>
+                    {(!ticketData.status || ticketData.status === 'IN_QUEUE' || ticketData.status === 'CONFIRMED' || ticketData.status === 'BOOKED') ? (
+                      <div className="inline-flex items-center gap-1.5 text-sm font-black text-emerald-700 bg-emerald-50 border border-emerald-300 px-3 py-1 rounded-full mt-1 shadow-sm">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                        {isHindi ? 'कन्फर्म' : 'CONFIRMED'}
+                      </div>
+                    ) : (ticketData.status === 'SERVED' || ticketData.status === 'COMPLETED') ? (
+                      <div className="inline-flex items-center gap-1.5 text-sm font-black text-blue-700 bg-blue-50 border border-blue-300 px-3 py-1 rounded-full mt-1 shadow-sm">
+                        <Clock className="w-4 h-4 text-blue-600" />
+                        {isHindi ? 'दर्शन संपन्न' : 'COMPLETED'}
+                      </div>
+                    ) : (
+                      <div className="text-sm font-black text-gray-700 bg-gray-100 px-3 py-1 rounded-full mt-1">
+                        {ticketData.status}
+                      </div>
+                    )}
                   </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <div className="text-xs font-bold text-gray-400 uppercase">Date</div>
+                    <div className="text-xs font-bold text-gray-400 uppercase">{isHindi ? "तिथि" : "Date"}</div>
                     <div className="text-md font-bold text-gray-800">{ticketData.date}</div>
                   </div>
                   <div>
-                    <div className="text-xs font-bold text-gray-400 uppercase">Time Slot</div>
+                    <div className="text-xs font-bold text-gray-400 uppercase">{isHindi ? "समय स्लॉट" : "Time Slot"}</div>
                     <div className="text-md font-bold text-gray-800">{formatTime(ticketData.start_time)} - {formatTime(ticketData.end_time)}</div>
                   </div>
                 </div>
@@ -326,13 +367,17 @@ function App() {
               onClick={() => window.print()}
               className="w-full py-3 bg-orange-600 hover:bg-orange-700 text-white font-bold rounded-xl text-sm transition shadow-sm active:scale-95"
             >
-              Print / Save Ticket
+              {isHindi ? "टिकट प्रिंट / सहेजें" : "Print / Save Ticket"}
             </button>
             <button 
-              onClick={() => { window.location.href = window.location.origin; }}
+              onClick={() => { 
+                setTicketViewToken(null);
+                setTicketData(null);
+                window.history.pushState({}, '', window.location.pathname);
+              }}
               className="w-full py-2.5 bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold rounded-xl text-xs transition active:scale-95"
             >
-              Back to Smart Temple
+              {isHindi ? "← डैशबोर्ड पर वापस जाएं" : "Back to Smart Temple"}
             </button>
             <p className="text-[10px] font-bold text-gray-400 mt-1">Powered by Smart Temple System</p>
           </div>
@@ -536,36 +581,162 @@ function App() {
                         </div>
                         <button onClick={() => { localStorage.removeItem('token'); window.location.reload(); }} className="text-xs font-bold text-orange-200 hover:text-white bg-orange-700/30 px-3 py-1.5 rounded-full transition-colors">Logout</button>
                       </div>
-                      <div className="bg-white/20 p-4 rounded-xl backdrop-blur-sm border border-white/20">
-                        <div className="text-3xl font-black mb-1">{userDashboard?.bookings?.length || 0}</div>
-                        <div className="text-[11px] font-bold text-orange-100 uppercase tracking-widest">Total Darshans</div>
+                      <div className="grid grid-cols-2 gap-2.5">
+                        <div className="bg-white/20 p-3 rounded-xl backdrop-blur-sm border border-white/20">
+                          <div className="text-2xl font-black mb-0.5">{activeBookings.length}</div>
+                          <div className="text-[10px] font-bold text-orange-100 uppercase tracking-wider">{isHindi ? "सक्रिय दर्शन" : "Active Darshans"}</div>
+                        </div>
+                        <div className="bg-white/10 p-3 rounded-xl backdrop-blur-sm border border-white/10">
+                          <div className="text-2xl font-black mb-0.5">{pastBookings.length}</div>
+                          <div className="text-[10px] font-bold text-orange-200 uppercase tracking-wider">{isHindi ? "पिछला इतिहास" : "Past History"}</div>
+                        </div>
                       </div>
                     </div>
 
-                    <div className="bg-gray-50 p-5 rounded-2xl border border-gray-200">
-                      <h4 className="font-bold text-gray-900 mb-4 flex items-center gap-2"><Clock className="w-5 h-5 text-gray-400"/> Recent Bookings</h4>
-                      <div className="flex flex-col gap-3 max-h-[400px] overflow-y-auto pr-2">
-                        {(!userDashboard?.bookings || userDashboard.bookings.length === 0) ? (
-                          <div className="text-center p-6 bg-white rounded-xl border border-dashed border-gray-200 text-gray-400">
-                            <div className="text-sm font-medium">No past bookings found</div>
-                          </div>
-                        ) : (
-                          userDashboard.bookings.map((b: any, i: number) => (
-                            <div 
-                              key={i} 
-                              onClick={() => { window.location.href = `/?ticket=${b.token}`; }}
-                              className="flex flex-col p-3 bg-white rounded-xl border border-gray-100 shadow-sm cursor-pointer hover:border-orange-300 hover:shadow-md transition-all group"
-                            >
-                              <div className="font-bold text-gray-800 text-sm mb-1 truncate group-hover:text-orange-600 transition-colors flex justify-between items-center">
-                                <span>{b.temple_name}</span>
-                                <span className="text-[10px] text-orange-500 font-bold">View Ticket &rarr;</span>
+                    <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm">
+                      <div className="flex items-center justify-between mb-3.5">
+                        <h4 className="font-black text-gray-900 text-sm flex items-center gap-2">
+                          <CalendarCheck className="w-4 h-4 text-orange-500"/>
+                          {isHindi ? "दर्शन रिकॉर्ड" : "Darshan Bookings"}
+                        </h4>
+                        <span className="text-[11px] font-bold text-gray-400">
+                          {allUserBookings.length} {isHindi ? "कुल" : "Total"}
+                        </span>
+                      </div>
+
+                      {/* 2 Tabs: Active / Upcoming vs Past History */}
+                      <div className="grid grid-cols-2 gap-1.5 bg-gray-100 p-1 rounded-xl mb-4 text-xs font-bold">
+                        <button
+                          type="button"
+                          onClick={() => setBookingHistoryTab('active')}
+                          className={`py-2 px-2 rounded-lg transition-all flex items-center justify-center gap-1.5 ${
+                            bookingHistoryTab === 'active'
+                              ? 'bg-white text-orange-600 shadow-sm font-black'
+                              : 'text-gray-500 hover:text-gray-900'
+                          }`}
+                        >
+                          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                          <span>{isHindi ? "सक्रिय दर्शन" : "Active / Upcoming"}</span>
+                          <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${
+                            bookingHistoryTab === 'active' ? 'bg-orange-100 text-orange-700' : 'bg-gray-200 text-gray-600'
+                          }`}>
+                            {activeBookings.length}
+                          </span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => setBookingHistoryTab('past')}
+                          className={`py-2 px-2 rounded-lg transition-all flex items-center justify-center gap-1.5 ${
+                            bookingHistoryTab === 'past'
+                              ? 'bg-white text-gray-900 shadow-sm font-black'
+                              : 'text-gray-500 hover:text-gray-900'
+                          }`}
+                        >
+                          <Clock className="w-3.5 h-3.5 text-gray-400" />
+                          <span>{isHindi ? "पिछला इतिहास" : "Past History"}</span>
+                          <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${
+                            bookingHistoryTab === 'past' ? 'bg-gray-200 text-gray-800' : 'bg-gray-200 text-gray-600'
+                          }`}>
+                            {pastBookings.length}
+                          </span>
+                        </button>
+                      </div>
+
+                      {/* Bookings List */}
+                      <div className="flex flex-col gap-3 max-h-[420px] overflow-y-auto pr-1">
+                        {bookingHistoryTab === 'active' ? (
+                          activeBookings.length === 0 ? (
+                            <div className="text-center p-6 bg-orange-50/40 rounded-xl border border-dashed border-orange-200 text-gray-500">
+                              <CalendarCheck className="w-8 h-8 mx-auto text-orange-400/80 mb-2" />
+                              <div className="text-xs font-bold text-gray-800 mb-1">
+                                {isHindi ? "कोई सक्रिय आगामी दर्शन नहीं है" : "No Active Upcoming Bookings"}
                               </div>
-                              <div className="flex justify-between items-center mt-1">
-                                <div className="text-[11px] font-medium text-gray-500">{b.date} - {b.start_time ? String(b.start_time).substring(0,5) : ""}</div>
-                                <div className="text-[10px] font-black text-orange-600 bg-orange-50 px-2 py-1 rounded">{b.token}</div>
+                              <p className="text-[11px] text-gray-500 mb-3">
+                                {isHindi ? "नया दर्शन स्लॉट बुक करने के लिए दाईं ओर मंदिर चुनें।" : "Select a temple on the right to reserve your darshan slot."}
+                              </p>
+                              {pastBookings.length > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={() => setBookingHistoryTab('past')}
+                                  className="text-[11px] font-black text-orange-600 hover:text-orange-700 underline"
+                                >
+                                  {isHindi ? `पिछला इतिहास देखें (${pastBookings.length})` : `View Past History (${pastBookings.length})`} &rarr;
+                                </button>
+                              )}
+                            </div>
+                          ) : (
+                            activeBookings.map((b: any, i: number) => (
+                              <div 
+                                key={`act-${i}`} 
+                                onClick={() => {
+                                  setTicketViewToken(b.token);
+                                  window.history.pushState({}, '', `/?ticket=${b.token}`);
+                                }}
+                                className="flex flex-col p-3.5 bg-gradient-to-br from-white to-emerald-50/30 rounded-xl border-2 border-emerald-200 shadow-sm cursor-pointer hover:border-emerald-500 hover:shadow-md transition-all group relative overflow-hidden"
+                              >
+                                <div className="flex justify-between items-start mb-1.5">
+                                  <span className="font-black text-gray-900 text-sm truncate group-hover:text-emerald-700 transition-colors">
+                                    {b.temple_name}
+                                  </span>
+                                  <span className="inline-flex items-center gap-1 text-[10px] font-black text-emerald-700 bg-emerald-100 border border-emerald-300 px-2 py-0.5 rounded-full shrink-0">
+                                    <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                    {isHindi ? 'कन्फर्म' : 'CONFIRMED'}
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-2 text-[11px] text-gray-600 font-medium mb-2">
+                                  <span>📅 {b.date}</span>
+                                  <span>•</span>
+                                  <span>🕒 {b.start_time ? formatTime(String(b.start_time)) : ""}{b.end_time ? ` - ${formatTime(String(b.end_time))}` : ""}</span>
+                                </div>
+                                <div className="flex justify-between items-center pt-2 border-t border-emerald-100 text-[11px]">
+                                  <span className="font-mono font-bold text-emerald-800 bg-emerald-100/70 px-2 py-0.5 rounded text-[10px]">
+                                    {b.token}
+                                  </span>
+                                  <span className="text-[11px] text-emerald-700 font-black group-hover:translate-x-0.5 transition-transform flex items-center gap-1">
+                                    {isHindi ? 'ई-पास देखें' : 'View e-Ticket'} &rarr;
+                                  </span>
+                                </div>
+                              </div>
+                            ))
+                          )
+                        ) : (
+                          pastBookings.length === 0 ? (
+                            <div className="text-center p-6 bg-gray-50 rounded-xl border border-dashed border-gray-200 text-gray-400">
+                              <Clock className="w-8 h-8 mx-auto text-gray-300 mb-2" />
+                              <div className="text-xs font-medium">
+                                {isHindi ? "कोई पिछला दर्शन इतिहास नहीं मिला" : "No past darshan history found"}
                               </div>
                             </div>
-                          ))
+                          ) : (
+                            pastBookings.map((b: any, i: number) => (
+                              <div 
+                                key={`pst-${i}`} 
+                                onClick={() => {
+                                  setTicketViewToken(b.token);
+                                  window.history.pushState({}, '', `/?ticket=${b.token}`);
+                                }}
+                                className="flex flex-col p-3 bg-gray-50 hover:bg-white rounded-xl border border-gray-200 shadow-none cursor-pointer hover:border-gray-400 hover:shadow-sm transition-all group"
+                              >
+                                <div className="flex justify-between items-center mb-1">
+                                  <span className="font-bold text-gray-700 text-xs truncate group-hover:text-gray-900 transition-colors">
+                                    {b.temple_name}
+                                  </span>
+                                  <span className="text-[9px] font-bold text-gray-500 bg-gray-200 px-1.5 py-0.5 rounded uppercase">
+                                    {isHindi ? 'संपन्न' : 'COMPLETED'}
+                                  </span>
+                                </div>
+                                <div className="flex justify-between items-center mt-1">
+                                  <div className="text-[11px] font-medium text-gray-400">
+                                    {b.date} • {b.start_time ? String(b.start_time).substring(0,5) : ""}
+                                  </div>
+                                  <div className="text-[10px] font-mono font-medium text-gray-400 group-hover:text-orange-600 transition-colors">
+                                    {b.token} &rarr;
+                                  </div>
+                                </div>
+                              </div>
+                            ))
+                          )
                         )}
                       </div>
                     </div>
