@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Users, Clock, AlertTriangle, CalendarCheck, Bell, Cloud, Thermometer, ShieldCheck, CheckCircle2, QrCode, Menu, X, Camera, MapPin, Grid, Heart, Car, Search, Languages, Upload, Copy, Check, FileText, ArrowLeft, ArrowRight } from 'lucide-react';
+import { Users, Clock, AlertTriangle, CalendarCheck, Bell, Cloud, Thermometer, ShieldCheck, CheckCircle2, QrCode, Menu, X, Camera, MapPin, Grid, Heart, Car, Search, Languages, Upload, Copy, Check, FileText, ArrowLeft, ArrowRight, Printer, Shield, Sparkles, Info, Ticket, Lock } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { supabase } from './supabaseClient';
 
@@ -100,6 +100,8 @@ function App() {
   const [ticketViewToken, setTicketViewToken] = useState<string | null>(new URLSearchParams(window.location.search).get('ticket'));
   const [bookingHistoryTab, setBookingHistoryTab] = useState<'active' | 'past'>('active');
   const [ticketData, setTicketData] = useState<any>(null);
+  const [gateActionStatus, setGateActionStatus] = useState<string | null>(null);
+  const [isProcessingGateEntry, setIsProcessingGateEntry] = useState(false);
   const [activeServiceModal, setActiveServiceModal] = useState<string | null>(null);
   const [sosSent, setSosSent] = useState(false);
   const [donateAmount, setDonateAmount] = useState('501');
@@ -709,126 +711,505 @@ function App() {
   };
 
   if (ticketViewToken) {
+    const isTicketPassed = !isBookingActive(ticketData) || ticketData?.status === 'VISITED' || ticketData?.status === 'SERVED' || ticketData?.status === 'COMPLETED';
+
+    const formatNiceDate = (dateStr: string) => {
+      if (!dateStr) return '';
+      try {
+        const parts = String(dateStr).split('T')[0].split('-');
+        if (parts.length === 3) {
+          const d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+          return d.toLocaleDateString(isHindi ? 'hi-IN' : 'en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+        }
+        return dateStr;
+      } catch {
+        return dateStr;
+      }
+    };
+
+    const getReportingTime = (startTimeStr: string) => {
+      if (!startTimeStr) return '15 mins before slot';
+      try {
+        const parts = String(startTimeStr).split(':');
+        if (parts.length >= 2) {
+          let h = Number(parts[0]);
+          let m = Number(parts[1]) - 15;
+          if (m < 0) {
+            m += 60;
+            h -= 1;
+          }
+          if (h < 0) h += 24;
+          const ampm = h >= 12 ? 'PM' : 'AM';
+          const displayH = h % 12 || 12;
+          return `${String(displayH).padStart(2, '0')}:${String(m).padStart(2, '0')} ${ampm}`;
+        }
+        return '15 mins before slot';
+      } catch {
+        return '15 mins before slot';
+      }
+    };
+
+    const handleAdmitAtGate = async () => {
+      if (!ticketData?.token) return;
+      setIsProcessingGateEntry(true);
+      try {
+        const res = await axios.post(`${API_URL}/gate/verify-token`, {
+          token: ticketData.token.trim().toUpperCase()
+        });
+        if (res.data.success) {
+          setGateActionStatus('SUCCESS');
+          setTicketData((prev: any) => prev ? ({ ...prev, status: 'VISITED', is_visited: true }) : prev);
+        } else {
+          setGateActionStatus('REPLAY');
+        }
+      } catch (err: any) {
+        setGateActionStatus('ERROR');
+      } finally {
+        setIsProcessingGateEntry(false);
+      }
+    };
+
     return (
-      <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4 font-sans bg-[url('https://images.unsplash.com/photo-1582510003544-4d00b7f74151?q=80&w=2070&auto=format&fit=crop')] bg-cover bg-center bg-fixed">
-        <div className="absolute inset-0 bg-black/60 backdrop-blur-sm"></div>
-        <div className="relative bg-white w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden border border-gray-200">
-          <div className="bg-orange-600 p-6 text-center text-white relative">
-            <div className="absolute -left-4 top-1/2 -translate-y-1/2 w-8 h-8 bg-black/60 rounded-full"></div>
-            <div className="absolute -right-4 top-1/2 -translate-y-1/2 w-8 h-8 bg-black/60 rounded-full"></div>
-            <h2 className="text-sm font-bold uppercase tracking-widest text-orange-200 mb-1">e-Darshan Ticket</h2>
-            <h1 className="text-2xl font-black">{ticketData ? ticketData.temple_name : 'Loading...'}</h1>
+      <div className="min-h-screen bg-[#FBF9F5] text-slate-800 py-6 md:py-10 px-3 md:px-6 font-sans relative flex flex-col items-center">
+        {/* Print Stylesheet */}
+        <style>{`
+          @media print {
+            body { background: #ffffff !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; margin: 0; padding: 0; }
+            .no-print { display: none !important; }
+            .print-ticket-wrapper { padding: 0 !important; margin: 0 !important; width: 100% !important; max-width: 100% !important; }
+            .print-ticket { box-shadow: none !important; border: 2px solid #ea580c !important; width: 100% !important; max-width: 100% !important; border-radius: 12px !important; }
+          }
+        `}</style>
+
+        {/* Top Control Bar (Hidden during Print) */}
+        <div className="w-full max-w-4xl flex flex-wrap items-center justify-between gap-3 mb-6 no-print bg-white/90 backdrop-blur-md p-3.5 rounded-2xl border border-orange-100 shadow-sm">
+          <button 
+            onClick={() => { 
+              setTicketViewToken(null);
+              setTicketData(null);
+              setGateActionStatus(null);
+              window.history.pushState({}, '', window.location.pathname);
+            }}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition active:scale-95"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            <span>{isHindi ? "← स्मार्ट मंदिर डैशबोर्ड" : "← Back to Smart Temple"}</span>
+          </button>
+
+          <div className="flex items-center gap-2">
+            {/* Language Toggle */}
+            <button
+              onClick={() => setIsHindi(!isHindi)}
+              className="inline-flex items-center gap-1.5 px-3 py-2 bg-orange-50 hover:bg-orange-100 text-orange-700 font-bold rounded-xl text-xs border border-orange-200 transition"
+            >
+              <Languages className="w-3.5 h-3.5" />
+              <span>{isHindi ? "English" : "हिंदी"}</span>
+            </button>
+
+            {/* Print Button */}
+            <button
+              onClick={() => window.print()}
+              className="inline-flex items-center gap-1.5 px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white font-bold rounded-xl text-xs shadow-md transition active:scale-95"
+            >
+              <Printer className="w-4 h-4" />
+              <span>{isHindi ? "पास प्रिंट / सेव करें" : "Print / Save Pass"}</span>
+            </button>
           </div>
-          
-          <div className="p-8 flex flex-col gap-6 relative">
-            {ticketError ? (
-              <div className="text-red-500 font-bold text-center py-10 flex flex-col items-center gap-2">
-                <AlertTriangle className="w-12 h-12 mb-2" />
-                {ticketError}
+        </div>
+
+        {/* Gate Verification Clearance Bar for QR Scanners */}
+        {ticketData && (
+          <div className="w-full max-w-4xl mb-6 no-print animate-in fade-in slide-in-from-top-4 duration-500">
+            {gateActionStatus === 'SUCCESS' ? (
+              <div className="bg-emerald-50 border-2 border-emerald-500 p-4 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-3 shadow-md">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-emerald-500 text-white flex items-center justify-center font-black">
+                    <CheckCircle2 className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <div className="text-emerald-900 font-black text-sm uppercase tracking-wide">
+                      {isHindi ? "प्रवेश की पुष्टि संपन्न! (Gate Entry Approved)" : "Gate Entry Verified & Recorded"}
+                    </div>
+                    <div className="text-emerald-700 text-xs">
+                      {isHindi ? "श्रद्धालु का प्रवेश मंदिर द्वार पर दर्ज हो चुका है। दर्शन हेतु आगे बढ़ें।" : `Token ${ticketData.token} has been admitted at the gate turnstile.`}
+                    </div>
+                  </div>
+                </div>
+                <span className="px-3 py-1 bg-emerald-200 text-emerald-900 rounded-full font-bold text-xs uppercase tracking-wider">
+                  Admitted
+                </span>
               </div>
-            ) : !ticketData ? (
-              <div className="text-gray-500 font-bold text-center py-10 flex flex-col items-center gap-2">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-500 mb-2"></div>
-                Verifying ticket...
+            ) : isTicketPassed ? (
+              <div className="bg-blue-50/90 border border-blue-200 p-4 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-3 shadow-sm">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-black">
+                    <CheckCircle2 className="w-6 h-6 text-blue-600" />
+                  </div>
+                  <div>
+                    <div className="text-blue-900 font-black text-sm uppercase tracking-wide">
+                      {isHindi ? "दर्शन संपन्न • पास पहले से प्रयुक्त है" : "Darshan Completed • Pass Already Used"}
+                    </div>
+                    <div className="text-blue-700 text-xs">
+                      {isHindi ? "इस दर्शन पास का उपयोग हो चुका है। एकल प्रवेश मान्य था।" : "This pass has completed its scheduled entry quota. Thank you for visiting!"}
+                    </div>
+                  </div>
+                </div>
+                <span className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full font-black text-xs uppercase tracking-wider border border-blue-200">
+                  {isHindi ? "दर्शन संपन्न" : "Visited"}
+                </span>
               </div>
             ) : (
-              (() => {
-                const isTicketPassed = !isBookingActive(ticketData) || ticketData?.status === 'VISITED' || ticketData?.status === 'SERVED' || ticketData?.status === 'COMPLETED';
-                return (
-                  <>
-                    <div className="flex justify-between items-center border-b border-dashed border-gray-300 pb-6">
-                      <div>
-                        <div className="text-xs font-bold text-gray-400 uppercase">Devotee</div>
-                        <div className="text-lg font-black text-gray-800">{ticketData.user_name}</div>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-xs font-bold text-gray-400 uppercase">{isHindi ? "स्थिति" : "Status"}</div>
-                        {isTicketPassed ? (
-                          <div className="inline-flex items-center gap-1.5 text-xs font-black text-blue-700 bg-blue-50 border border-blue-300 px-3 py-1 rounded-full mt-1 shadow-sm uppercase tracking-wider">
-                            <CheckCircle2 className="w-3.5 h-3.5 text-blue-600" />
-                            {isHindi ? 'दर्शन संपन्न (VISITED)' : 'VISITED'}
-                          </div>
-                        ) : (
-                          <div className="inline-flex items-center gap-1.5 text-sm font-black text-emerald-700 bg-emerald-50 border border-emerald-300 px-3 py-1 rounded-full mt-1 shadow-sm uppercase tracking-wider">
-                            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                            {isHindi ? 'कन्फर्म' : 'CONFIRMED'}
-                          </div>
-                        )}
-                      </div>
+              <div className="bg-gradient-to-r from-emerald-500 to-teal-600 text-white p-4 rounded-2xl shadow-lg flex flex-col sm:flex-row items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center text-white">
+                    <ShieldCheck className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <div className="font-black text-sm uppercase tracking-wider flex items-center gap-2">
+                      <span>{isHindi ? "गेट स्कैनर सत्यापन: पास वैध व सक्रिय" : "Gate Scanner Verification: Pass Valid & Active"}</span>
+                      <span className="w-2 h-2 rounded-full bg-emerald-200 animate-ping"></span>
                     </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <div className="text-xs font-bold text-gray-400 uppercase">{isHindi ? "तिथि" : "Date"}</div>
-                        <div className="text-md font-bold text-gray-800">{ticketData.date}</div>
-                      </div>
-                      <div>
-                        <div className="text-xs font-bold text-gray-400 uppercase">{isHindi ? "समय स्लॉट" : "Time Slot"}</div>
-                        <div className="text-md font-bold text-gray-800">{formatTime(ticketData.start_time)} - {formatTime(ticketData.end_time)}</div>
-                      </div>
+                    <div className="text-emerald-100 text-xs mt-0.5">
+                      {isHindi 
+                        ? `श्रद्धालु: ${ticketData.user_name} • स्लॉट: ${formatTime(ticketData.start_time)} - ${formatTime(ticketData.end_time)}`
+                        : `Devotee: ${ticketData.user_name} • Slot: ${formatTime(ticketData.start_time)} - ${formatTime(ticketData.end_time)}`}
                     </div>
+                  </div>
+                </div>
 
-                    <div className="mt-4 flex flex-col items-center">
-                      <div className="p-4 bg-gray-50 rounded-2xl border border-gray-100 mb-2 relative overflow-hidden">
-                        <QRCodeSVG value={`${window.location.origin}/?ticket=${ticketData.token}`} size={150} level="H" fgColor={isTicketPassed ? "#94a3b8" : "#000000"} />
-                        {isTicketPassed && (
-                          <div className="absolute inset-0 bg-white/80 backdrop-blur-[1px] flex flex-col items-center justify-center p-2">
-                            <div className="rotate-[-10deg] border-2 border-blue-600 text-blue-700 bg-white/95 px-3 py-1 rounded-lg font-black text-xs shadow-md tracking-widest flex items-center gap-1.5 uppercase">
-                              <CheckCircle2 className="w-3.5 h-3.5 text-blue-600" />
-                              {isHindi ? 'दर्शन संपन्न' : 'VISITED'}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                      <div className="text-xs font-mono text-gray-400">{ticketData.token}</div>
-                    </div>
-
-                    {isTicketPassed ? (
-                      <div className="bg-blue-50/80 border border-blue-200 rounded-2xl p-3 text-center">
-                        <div className="text-xs font-black text-blue-900 flex items-center justify-center gap-1.5">
-                          <CheckCircle2 className="w-4 h-4 text-blue-600" />
-                          {isHindi ? "दर्शन संपन्न (Slot Completed)" : "Darshan Completed & Visited"}
-                        </div>
-                        <p className="text-[10px] text-blue-700/80 mt-0.5 leading-relaxed">
-                          {isHindi ? "इस दर्शन पास का निर्धारित समय पूर्ण हो चुका है। मंदिर पधारने के लिए धन्यवाद!" : "The scheduled time for this darshan has concluded. Thank you for visiting!"}
-                        </p>
-                      </div>
-                    ) : (
-                      <div className="bg-emerald-50/80 border border-emerald-200 rounded-2xl p-3 text-center">
-                        <div className="text-xs font-black text-emerald-900 flex items-center justify-center gap-1.5">
-                          <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                          {isHindi ? "सक्रिय ई-दर्शन पास" : "Active e-Darshan Pass"}
-                        </div>
-                        <p className="text-[10px] text-emerald-700/80 mt-0.5 leading-relaxed">
-                          {isHindi ? "कृपया अपने निर्धारित स्लॉट पर मंदिर प्रवेश द्वार पर यह पास स्कैन कराएं।" : "Please present this pass at the temple entry gate during your slot."}
-                        </p>
-                      </div>
-                    )}
-                  </>
-                );
-              })()
+                <button
+                  onClick={handleAdmitAtGate}
+                  disabled={isProcessingGateEntry}
+                  className="w-full sm:w-auto px-5 py-2.5 bg-white hover:bg-emerald-50 text-emerald-800 font-black rounded-xl text-xs uppercase tracking-wider shadow-md transition-all active:scale-95 shrink-0 flex items-center justify-center gap-2"
+                >
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                  <span>{isProcessingGateEntry ? (isHindi ? "पुष्टि हो रही है..." : "Admitting...") : (isHindi ? "गेट पर प्रवेश दर्ज करें" : "Mark Gate Entry")}</span>
+                </button>
+              </div>
             )}
           </div>
+        )}
+
+        {/* The Authentic e-Darshan Boarding Pass */}
+        <div className="w-full max-w-4xl print-ticket-wrapper">
+          {ticketError ? (
+            <div className="bg-white rounded-3xl p-12 text-center border-2 border-red-200 shadow-xl max-w-lg mx-auto">
+              <AlertTriangle className="w-16 h-16 text-red-500 mx-auto mb-4" />
+              <h2 className="text-2xl font-black text-red-800 mb-2">{isHindi ? "अमान्य अथवा समाप्त पास" : "Invalid or Expired Pass"}</h2>
+              <p className="text-gray-500 text-sm mb-6">{isHindi ? "यह क्यूआर कोड या टोकन डेटाबेस में उपलब्ध नहीं है।" : "This ticket token was not found or has been revoked."}</p>
+              <button 
+                onClick={() => { setTicketViewToken(null); window.history.pushState({}, '', window.location.pathname); }}
+                className="px-6 py-3 bg-slate-800 text-white font-bold rounded-xl text-xs"
+              >
+                {isHindi ? "वापस जाएं" : "Return to Home"}
+              </button>
+            </div>
+          ) : !ticketData ? (
+            <div className="bg-white rounded-3xl p-16 text-center border shadow-xl max-w-lg mx-auto flex flex-col items-center">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-500 mb-4"></div>
+              <p className="text-gray-600 font-bold text-base">{isHindi ? "मंदिर डिजिटल रजिस्ट्री से टिकट सत्यापित हो रहा है..." : "Authenticating Pass with Temple Registry..."}</p>
+            </div>
+          ) : (
+            <div className="bg-white rounded-3xl shadow-2xl border-2 border-orange-300/80 overflow-hidden print-ticket relative">
+              {/* Top Ornate Header */}
+              <div className="bg-gradient-to-r from-orange-700 via-amber-600 to-orange-700 text-white p-6 md:p-8 relative overflow-hidden">
+                {/* Traditional Side Scallop Notches */}
+                <div className="absolute -left-5 top-1/2 -translate-y-1/2 w-10 h-10 bg-[#FBF9F5] rounded-full border-r-2 border-orange-400/50 shadow-inner no-print"></div>
+                <div className="absolute -right-5 top-1/2 -translate-y-1/2 w-10 h-10 bg-[#FBF9F5] rounded-full border-l-2 border-orange-400/50 shadow-inner no-print"></div>
+                
+                {/* Subtle Background Mandala / Radiance */}
+                <div className="absolute -right-12 -top-12 w-48 h-48 bg-white/10 rounded-full blur-2xl pointer-events-none"></div>
+
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-4 text-center sm:text-left relative z-10">
+                  <div className="flex items-center gap-4">
+                    <div className="w-14 h-14 md:w-16 md:h-16 rounded-2xl bg-white/15 backdrop-blur-md border-2 border-amber-300/40 flex items-center justify-center text-amber-200 text-2xl font-black shadow-inner shrink-0">
+                      🕉️
+                    </div>
+                    <div>
+                      <div className="text-[11px] font-black uppercase tracking-widest text-amber-200 flex items-center justify-center sm:justify-start gap-1.5">
+                        <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                        <span>{isHindi ? "श्री देवस्थानम प्रबंधन बोर्ड • आधिकारिक ई-प्रवेश पत्र" : "SHREE TEMPLE BOARD • OFFICIAL E-DARSHAN BOARDING PASS"}</span>
+                      </div>
+                      <h1 className="text-2xl md:text-3xl font-black tracking-tight text-white mt-0.5">
+                        {ticketData.temple_name}
+                      </h1>
+                      <div className="text-xs md:text-sm font-semibold text-orange-100 flex items-center justify-center sm:justify-start gap-1.5 mt-0.5">
+                        <MapPin className="w-3.5 h-3.5 text-amber-300" />
+                        <span>{ticketData.city || 'India'}</span>
+                        <span className="opacity-60">•</span>
+                        <span>{isHindi ? "सुगम दर्शन एवं कतार प्रबंधन प्रणाली" : "Smart Darshan & Digital Queue System"}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="text-center sm:text-right shrink-0">
+                    <div className="text-[10px] uppercase font-bold text-amber-200 tracking-wider">
+                      {isHindi ? "टोकन संख्या" : "TOKEN NUMBER"}
+                    </div>
+                    <div className="font-mono text-xl md:text-2xl font-black text-white bg-black/25 px-3 py-1 rounded-xl border border-white/20 mt-1 tracking-widest">
+                      {ticketData.token}
+                    </div>
+                    <div className="text-[10px] text-amber-200/90 font-medium mt-1">
+                      {isHindi ? "एकल प्रवेश मान्य" : "Single Entry Permit"}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Holographic Security Ribbon */}
+                <div className="mt-5 pt-3 border-t border-white/20 flex flex-wrap items-center justify-between text-[11px] text-amber-100 gap-2 font-medium">
+                  <div className="flex items-center gap-1.5">
+                    <Lock className="w-3.5 h-3.5 text-amber-300" />
+                    <span>{isHindi ? "डिजिटल एन्क्रिप्टेड पास ID: " : "Digital Encrypted Pass ID: "}</span>
+                    <span className="font-mono font-bold text-white">#STP-{ticketData.token}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="inline-block w-2 h-2 rounded-full bg-emerald-400"></span>
+                    <span>{isHindi ? "केंद्रीकृत डेटाबेस में सत्यापित" : "Central Registry Verified"}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Main Ticket Layout: Left Details + Right Perforated Stub */}
+              <div className="p-6 md:p-8 flex flex-col lg:flex-row gap-8 relative">
+                
+                {/* Left 65%: Devotee & Darshan Information */}
+                <div className="flex-1 flex flex-col justify-between gap-6">
+                  {/* Devotee Row */}
+                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 pb-5 border-b border-gray-200">
+                    <div>
+                      <div className="text-[11px] font-black uppercase tracking-wider text-gray-400">
+                        {isHindi ? "श्रद्धालु का नाम / DEVOTEE NAME" : "DEVOTEE NAME"}
+                      </div>
+                      <div className="text-2xl font-black text-gray-900 tracking-tight mt-0.5">
+                        {ticketData.user_name}
+                      </div>
+                      <div className="inline-flex items-center gap-1.5 text-xs font-bold text-orange-800 bg-orange-50 border border-orange-200 px-2.5 py-0.5 rounded-lg mt-1.5">
+                        <Ticket className="w-3.5 h-3.5 text-orange-600" />
+                        <span>{isHindi ? "सुगम दर्शन • पूर्व आरक्षित पास" : "Pre-Booked General Darshan"}</span>
+                      </div>
+                    </div>
+
+                    <div className="text-left sm:text-right">
+                      <div className="text-[11px] font-black uppercase tracking-wider text-gray-400">
+                        {isHindi ? "पास स्थिति / PASS STATUS" : "STATUS"}
+                      </div>
+                      {isTicketPassed ? (
+                        <div className="inline-flex items-center gap-1.5 text-xs font-black text-blue-700 bg-blue-50 border-2 border-blue-400 px-3 py-1 rounded-xl mt-1 shadow-sm uppercase tracking-wider">
+                          <CheckCircle2 className="w-4 h-4 text-blue-600" />
+                          <span>{isHindi ? "दर्शन संपन्न (VISITED)" : "VISITED"}</span>
+                        </div>
+                      ) : (
+                        <div className="inline-flex items-center gap-1.5 text-xs font-black text-emerald-800 bg-emerald-50 border-2 border-emerald-500 px-3.5 py-1 rounded-xl mt-1 shadow-sm uppercase tracking-wider">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                          <span>{isHindi ? "कन्फर्म एवं वैध (CONFIRMED)" : "CONFIRMED"}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* 4 Essential Metrics Grid */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {/* Darshan Date */}
+                    <div className="bg-amber-50/60 p-4 rounded-2xl border border-amber-200/80">
+                      <div className="text-[11px] font-black uppercase tracking-wider text-amber-800/80 flex items-center gap-1.5 mb-1">
+                        <CalendarCheck className="w-4 h-4 text-orange-600" />
+                        <span>{isHindi ? "दर्शन तिथि" : "Darshan Date"}</span>
+                      </div>
+                      <div className="text-base font-black text-gray-900">
+                        {formatNiceDate(ticketData.date)}
+                      </div>
+                      <div className="text-[11px] font-mono text-gray-500 mt-0.5">
+                        {ticketData.date}
+                      </div>
+                    </div>
+
+                    {/* Time Slot Window */}
+                    <div className="bg-orange-50/60 p-4 rounded-2xl border border-orange-200/80">
+                      <div className="text-[11px] font-black uppercase tracking-wider text-orange-800/80 flex items-center gap-1.5 mb-1">
+                        <Clock className="w-4 h-4 text-orange-600" />
+                        <span>{isHindi ? "दर्शन समय स्लॉट" : "Allotted Time Slot"}</span>
+                      </div>
+                      <div className="text-base font-black text-orange-950">
+                        {formatTime(ticketData.start_time)} - {formatTime(ticketData.end_time)}
+                      </div>
+                      <div className="text-[11px] font-semibold text-orange-700 mt-0.5">
+                        {isHindi ? "प्राथमिकता पंक्ति (Express Lane)" : "Express Darshan Window"}
+                      </div>
+                    </div>
+
+                    {/* Reporting Time */}
+                    <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200">
+                      <div className="text-[11px] font-black uppercase tracking-wider text-slate-600 flex items-center gap-1.5 mb-1">
+                        <Bell className="w-4 h-4 text-slate-700" />
+                        <span>{isHindi ? "रिपोर्टिंग समय" : "Reporting Time"}</span>
+                      </div>
+                      <div className="text-base font-black text-slate-900">
+                        {getReportingTime(ticketData.start_time)}
+                      </div>
+                      <div className="text-[11px] text-slate-500 mt-0.5">
+                        {isHindi ? "स्लॉट से 15 मिनट पूर्व उपस्थित हों" : "15 mins prior to slot start"}
+                      </div>
+                    </div>
+
+                    {/* Gate & Sanctum */}
+                    <div className="bg-emerald-50/60 p-4 rounded-2xl border border-emerald-200">
+                      <div className="text-[11px] font-black uppercase tracking-wider text-emerald-800/80 flex items-center gap-1.5 mb-1">
+                        <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                        <span>{isHindi ? "प्रवेश द्वार" : "Assigned Entry Gate"}</span>
+                      </div>
+                      <div className="text-base font-black text-emerald-950">
+                        {isHindi ? "द्वार संख्या 4 (टर्नस्टाइल प्रवेश)" : "Gate No. 4 (Turnstile Entry)"}
+                      </div>
+                      <div className="text-[11px] font-semibold text-emerald-700 mt-0.5">
+                        {isHindi ? "मुख्य गर्भगृह दर्शन" : "Main Sanctum Sanctorum"}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Watermark Notice Box */}
+                  <div className={`p-4 rounded-2xl border ${isTicketPassed ? 'bg-blue-50/60 border-blue-200 text-blue-900' : 'bg-emerald-50/60 border-emerald-200 text-emerald-900'}`}>
+                    <div className="flex items-center gap-2 font-black text-xs uppercase tracking-wider">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                      <span>{isTicketPassed ? (isHindi ? "दर्शन संपन्न (Slot Completed)" : "Darshan Completed & Recorded") : (isHindi ? "प्रवेश हेतु वैध व स्वीकृत पास" : "Official Gate Pass Cleared for Admission")}</span>
+                    </div>
+                    <p className="text-xs mt-1 leading-relaxed opacity-90">
+                      {isTicketPassed 
+                        ? (isHindi ? "इस दर्शन पास का निर्धारित समय पूर्ण हो चुका है। मंदिर पधारने के लिए धन्यवाद!" : "The scheduled entry for this token has concluded. Thank you for your divine visit!")
+                        : (isHindi ? "कृपया अपने निर्धारित समय पर मंदिर प्रवेश द्वार पर टर्नस्टाइल स्कैनर अथवा सुरक्षा गार्ड को यह क्यूआर कोड स्कैन कराएं।" : "Please present the official turnstile QR code at Gate 4 during your slot. Keep original Government Photo ID handy.")}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Right 35%: Perforated Stub with QR Code */}
+                <div className="lg:w-72 border-t-2 lg:border-t-0 lg:border-l-2 border-dashed border-orange-300 pt-6 lg:pt-0 lg:pl-8 flex flex-col items-center justify-between text-center relative">
+                  
+                  {/* Top punch hole graphic */}
+                  <div className="hidden lg:block absolute -top-10 -left-3 w-6 h-6 bg-[#FBF9F5] rounded-full border border-orange-300 shadow-inner no-print"></div>
+                  <div className="hidden lg:block absolute -bottom-10 -left-3 w-6 h-6 bg-[#FBF9F5] rounded-full border border-orange-300 shadow-inner no-print"></div>
+
+                  <div className="w-full">
+                    <div className="text-[10px] font-black uppercase tracking-widest text-orange-700 bg-orange-100/70 border border-orange-200 py-1 px-3 rounded-full mb-3 inline-block">
+                      {isHindi ? "द्वार सत्यापन कोड" : "TURNSTILE PASS STUB"}
+                    </div>
+                    
+                    {/* QR Code Container */}
+                    <div className="p-3 bg-white rounded-2xl border-2 border-orange-200 shadow-md inline-block relative overflow-hidden">
+                      <QRCodeSVG 
+                        value={`${window.location.origin}/?ticket=${ticketData.token}`} 
+                        size={175} 
+                        level="H" 
+                        includeMargin={false}
+                        fgColor={isTicketPassed ? "#64748b" : "#0f172a"}
+                      />
+                      {isTicketPassed && (
+                        <div className="absolute inset-0 bg-white/85 backdrop-blur-[1px] flex flex-col items-center justify-center p-2">
+                          <div className="rotate-[-12deg] border-2 border-blue-600 text-blue-700 bg-white px-3 py-1.5 rounded-xl font-black text-xs shadow-lg tracking-widest flex items-center gap-1.5 uppercase">
+                            <CheckCircle2 className="w-4 h-4 text-blue-600" />
+                            <span>{isHindi ? 'दर्शन संपन्न' : 'VISITED'}</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="mt-2.5">
+                      <div className="font-mono text-base font-black text-gray-900 tracking-wider">
+                        {ticketData.token}
+                      </div>
+                      <div className="text-[10px] text-gray-400 font-medium">
+                        {isHindi ? "स्कैनर पर क्यूआर कोड दिखाएं" : "Present at entry gate scanner"}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Faux Barcode Pattern for Boarding Pass Realism */}
+                  <div className="mt-5 pt-4 border-t border-gray-100 w-full flex flex-col items-center">
+                    <div className="flex items-center justify-center gap-0.5 h-7 w-44 opacity-75">
+                      {[3,1,4,2,1,5,2,3,1,4,2,1,3,5,1,2,4,1,3,2,5,1,2,3,1,4,2].map((w, idx) => (
+                        <div key={idx} className="bg-slate-800 h-full" style={{ width: `${w * 1.5}px` }}></div>
+                      ))}
+                    </div>
+                    <div className="text-[9px] font-mono text-gray-400 mt-1 uppercase tracking-widest">
+                      *ST-{ticketData.token}-SECURE*
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Devotee Guidelines / Mandir Niyamavali */}
+              <div className="bg-amber-50/40 border-t border-orange-200/70 p-6 md:p-8">
+                <div className="flex items-center gap-2 mb-4">
+                  <Info className="w-4 h-4 text-orange-600" />
+                  <h3 className="text-xs md:text-sm font-black text-orange-950 uppercase tracking-wider">
+                    {isHindi ? "महत्वपूर्ण दिशा-निर्देश एवं मंदिर नियमावली" : "Important Darshan Guidelines & Rules"}
+                  </h3>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs text-gray-700">
+                  <div className="flex items-start gap-2 bg-white/80 p-3 rounded-xl border border-orange-100">
+                    <span className="text-orange-600 font-black">1.</span>
+                    <span>
+                      <strong>{isHindi ? "पहचान पत्र अनिवार्य:" : "Original Photo ID:"}</strong> {isHindi ? "प्रवेश के समय आधार कार्ड / वोटर आईडी साथ रखना अनिवार्य है।" : "Devotees must carry original Government Photo ID matching the pass."}
+                    </span>
+                  </div>
+                  <div className="flex items-start gap-2 bg-white/80 p-3 rounded-xl border border-orange-100">
+                    <span className="text-orange-600 font-black">2.</span>
+                    <span>
+                      <strong>{isHindi ? "समय की पाबंदी:" : "Reporting Time:"}</strong> {isHindi ? "स्लॉट समय से कम से कम 15 मिनट पूर्व गेट पर उपस्थित हों।" : "Arrive at least 15 minutes before slot window. Late entries enter general queue."}
+                    </span>
+                  </div>
+                  <div className="flex items-start gap-2 bg-white/80 p-3 rounded-xl border border-orange-100">
+                    <span className="text-orange-600 font-black">3.</span>
+                    <span>
+                      <strong>{isHindi ? "प्रतिबंधित सामग्री:" : "Prohibited Articles:"}</strong> {isHindi ? "गर्भगृह में मोबाइल, स्मार्टवॉच, चमड़े की वस्तुएं व जूते वर्जित हैं।" : "Mobile phones, smart devices, footwear & leather items must be kept in cloakroom."}
+                    </span>
+                  </div>
+                  <div className="flex items-start gap-2 bg-white/80 p-3 rounded-xl border border-orange-100">
+                    <span className="text-orange-600 font-black">4.</span>
+                    <span>
+                      <strong>{isHindi ? "पारंपरिक परिधान:" : "Dress Code:"}</strong> {isHindi ? "दर्शन हेतु शालीन पारंपरिक भारतीय परिधान का पालन करें।" : "Modest traditional Indian attire is recommended inside the sanctum."}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Security Seal & Helpline Footer */}
+              <div className="bg-slate-900 text-slate-300 p-4 md:p-5 flex flex-col sm:flex-row items-center justify-between text-[11px] gap-2 border-t border-slate-800">
+                <div className="flex items-center gap-2">
+                  <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                  <span>
+                    {isHindi ? "सुरक्षा हेल्पलाइन: 1800-202-6000 • 24x7 चिकित्सा सहायता: द्वार 1" : "Emergency Security Helpline: 1800-202-6000 • Medical SOS: Gate 1 First Aid"}
+                  </span>
+                </div>
+                <div className="text-slate-400 text-[10px] text-center sm:text-right">
+                  {isHindi ? "स्मार्ट मंदिर डिजिटल रजिस्ट्री द्वारा प्रमाणित • किसी भौतिक हस्ताक्षर की आवश्यकता नहीं" : "Authenticated by Smart Temple Digital Registry • No Physical Signature Required"}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Bottom Actions (Hidden during print) */}
+        <div className="mt-8 flex flex-wrap items-center justify-center gap-4 no-print pb-12">
+          <button
+            onClick={() => window.print()}
+            className="px-6 py-3 bg-orange-600 hover:bg-orange-700 text-white font-black rounded-xl text-sm shadow-lg transition-all active:scale-95 flex items-center gap-2"
+          >
+            <Printer className="w-4 h-4" />
+            <span>{isHindi ? "पास प्रिंट / पीडीएफ डाउनलोड करें" : "Print / Download PDF"}</span>
+          </button>
           
-          <div className="bg-gray-50 p-4 text-center border-t border-gray-100 flex flex-col gap-2">
-            <button 
-              onClick={() => window.print()}
-              className="w-full py-3 bg-orange-600 hover:bg-orange-700 text-white font-bold rounded-xl text-sm transition shadow-sm active:scale-95"
-            >
-              {isHindi ? "टिकट प्रिंट / सहेजें" : "Print / Save Ticket"}
-            </button>
-            <button 
-              onClick={() => { 
-                setTicketViewToken(null);
-                setTicketData(null);
-                window.history.pushState({}, '', window.location.pathname);
-              }}
-              className="w-full py-2.5 bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold rounded-xl text-xs transition active:scale-95"
-            >
-              {isHindi ? "← डैशबोर्ड पर वापस जाएं" : "Back to Smart Temple"}
-            </button>
-            <p className="text-[10px] font-bold text-gray-400 mt-1">Powered by Smart Temple System</p>
-          </div>
+          <button
+            onClick={() => {
+              setTicketViewToken(null);
+              setTicketData(null);
+              setGateActionStatus(null);
+              window.history.pushState({}, '', window.location.pathname);
+            }}
+            className="px-6 py-3 bg-white hover:bg-slate-100 text-slate-700 font-bold rounded-xl text-sm border border-slate-200 shadow-sm transition active:scale-95 flex items-center gap-2"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            <span>{isHindi ? "मुख्य पृष्ठ पर वापस जाएं" : "Back to Main Portal"}</span>
+          </button>
         </div>
       </div>
     );
