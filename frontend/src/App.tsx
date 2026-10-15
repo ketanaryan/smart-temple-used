@@ -102,6 +102,7 @@ function App() {
   const [ticketData, setTicketData] = useState<any>(null);
   const [gateActionStatus, setGateActionStatus] = useState<string | null>(null);
   const [isProcessingGateEntry, setIsProcessingGateEntry] = useState(false);
+  const [isStaffGateMode, setIsStaffGateMode] = useState(false);
   const [activeServiceModal, setActiveServiceModal] = useState<string | null>(null);
   const [sosSent, setSosSent] = useState(false);
   const [donateAmount, setDonateAmount] = useState('501');
@@ -875,15 +876,15 @@ function App() {
                   {isHindi ? "दर्शन संपन्न" : "Visited"}
                 </span>
               </div>
-            ) : (
-              <div className="bg-gradient-to-r from-emerald-500 to-teal-600 text-white p-4 rounded-2xl shadow-lg flex flex-col sm:flex-row items-center justify-between gap-3">
+            ) : (isAdmin || isStaffGateMode) ? (
+              <div className="bg-gradient-to-r from-emerald-600 to-teal-700 text-white p-4 rounded-2xl shadow-lg flex flex-col sm:flex-row items-center justify-between gap-3 border-2 border-emerald-400">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center text-white">
                     <ShieldCheck className="w-6 h-6" />
                   </div>
                   <div>
                     <div className="font-black text-sm uppercase tracking-wider flex items-center gap-2">
-                      <span>{isHindi ? "गेट स्कैनर सत्यापन: पास वैध व सक्रिय" : "Gate Scanner Verification: Pass Valid & Active"}</span>
+                      <span>{isHindi ? "गेट स्टाफ सत्यापन: पास वैध व सक्रिय" : "Gate Staff Verification: Pass Valid & Active"}</span>
                       <span className="w-2 h-2 rounded-full bg-emerald-200 animate-ping"></span>
                     </div>
                     <div className="text-emerald-100 text-xs mt-0.5">
@@ -894,14 +895,57 @@ function App() {
                   </div>
                 </div>
 
-                <button
-                  onClick={handleAdmitAtGate}
-                  disabled={isProcessingGateEntry}
-                  className="w-full sm:w-auto px-5 py-2.5 bg-white hover:bg-emerald-50 text-emerald-800 font-black rounded-xl text-xs uppercase tracking-wider shadow-md transition-all active:scale-95 shrink-0 flex items-center justify-center gap-2"
-                >
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                  <span>{isProcessingGateEntry ? (isHindi ? "पुष्टि हो रही है..." : "Admitting...") : (isHindi ? "गेट पर प्रवेश दर्ज करें" : "Mark Gate Entry")}</span>
-                </button>
+                <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                  <button
+                    onClick={handleAdmitAtGate}
+                    disabled={isProcessingGateEntry}
+                    className="w-full sm:w-auto px-5 py-2.5 bg-white hover:bg-emerald-50 text-emerald-800 font-black rounded-xl text-xs uppercase tracking-wider shadow-md transition-all active:scale-95 shrink-0 flex items-center justify-center gap-2"
+                  >
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                    <span>{isProcessingGateEntry ? (isHindi ? "पुष्टि हो रही है..." : "Admitting...") : (isHindi ? "गेट पर प्रवेश दर्ज करें" : "Mark Gate Entry")}</span>
+                  </button>
+                  {!isAdmin && (
+                    <button
+                      onClick={() => setIsStaffGateMode(false)}
+                      title="Exit Staff Mode"
+                      className="px-2.5 py-2 bg-emerald-800/80 hover:bg-emerald-800 text-emerald-200 hover:text-white rounded-xl text-xs font-bold transition"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="bg-gradient-to-r from-orange-500 to-amber-600 text-white p-4 rounded-2xl shadow-md flex flex-col sm:flex-row items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center text-white">
+                    <QrCode className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <div className="font-black text-sm uppercase tracking-wider flex items-center gap-2">
+                      <span>{isHindi ? "आधिकारिक दर्शन पास • गेट स्कैनर पर प्रस्तुत करें" : "Official Devotee e-Pass • Present at Gate Turnstile"}</span>
+                      <span className="w-2 h-2 rounded-full bg-emerald-300 animate-pulse"></span>
+                    </div>
+                    <div className="text-orange-100 text-xs mt-0.5">
+                      {isHindi 
+                        ? "कृपया मंदिर मुख्य द्वार पर टर्नस्टाइल स्कैनर या सुरक्षा अधिकारी के समक्ष यह क्यूआर कोड दिखाएं।"
+                        : "Please present this digital pass or printed QR code at the temple entrance gate turnstile scanner."}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="px-3 py-1 bg-white/20 text-white rounded-full font-bold text-xs uppercase tracking-wider border border-white/30">
+                    {isHindi ? "सक्रिय व वैध" : "Valid & Active"}
+                  </span>
+                  <button
+                    onClick={() => setIsStaffGateMode(true)}
+                    title={isHindi ? "मंदिर स्टाफ / सुरक्षा गार्ड के लिए" : "Temple Staff / Gate Scanner Access"}
+                    className="text-[11px] text-orange-200 hover:text-white underline px-2 py-1 transition"
+                  >
+                    {isHindi ? "स्टाफ मोड?" : "Staff Mode?"}
+                  </button>
+                </div>
               </div>
             )}
           </div>
