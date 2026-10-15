@@ -296,6 +296,12 @@ try:
             models.Booking.is_online == False
         ).count()
         
+        upcoming_slots = db.query(models.TimeSlot).filter(
+            models.TimeSlot.temple_id == temple_id,
+            models.TimeSlot.date == today,
+            models.TimeSlot.end_time >= current_time
+        ).all()
+        
         total_in_queue = online_count + walkin_count
         next_category = QueueBalancer.get_next_category(online_count, walkin_count)
         arrival_rate_lambda = 12.0 + (total_in_queue / 5.0) 
@@ -320,9 +326,9 @@ try:
             recommended_action = "Maintain current operations. Open all standard gates."
 
         env_data = {
-            1: {"temp": "28.5AC", "aqi": 112, "aqi_status": "MODERATE", "cap": "76%", "sec": "SECURE"},
-            2: {"temp": "22.1AC", "aqi": 42, "aqi_status": "GOOD", "cap": "92%", "sec": "ELEVATED"},
-            3: {"temp": "12.0AC", "aqi": 28, "aqi_status": "EXCELLENT", "cap": "45%", "sec": "SECURE"},
+            1: {"temp": "28.5°C", "aqi": 112, "aqi_status": "MODERATE", "cap": "76%", "sec": "SECURE"},
+            2: {"temp": "22.1°C", "aqi": 42, "aqi_status": "GOOD", "cap": "92%", "sec": "ELEVATED"},
+            3: {"temp": "12.0°C", "aqi": 28, "aqi_status": "EXCELLENT", "cap": "45%", "sec": "SECURE"},
         }
         mock_env = env_data.get(temple_id, env_data[1])
 
