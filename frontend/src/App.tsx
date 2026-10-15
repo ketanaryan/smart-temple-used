@@ -26,8 +26,30 @@ const getLocalTimeStr = () => {
 
 const normalizeCity = (city: string) => {
   if (!city) return '';
-  const c = city.trim();
-  return c.charAt(0).toUpperCase() + c.slice(1).toLowerCase();
+  return city.trim().split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+};
+
+const getTempleUpiConfig = (templeName: string) => {
+  const name = (templeName || '').toLowerCase();
+  if (name.includes('kashi') || name.includes('vishwanath')) {
+    return { upiId: 'kashivishwanath.trust@sbi', trustName: 'Shri Kashi Vishwanath Mandir Trust' };
+  }
+  if (name.includes('siddhi') || name.includes('vinayak')) {
+    return { upiId: 'siddhivinayak.trust@axis', trustName: 'Shree Siddhivinayak Ganapati Temple Trust' };
+  }
+  if (name.includes('somnath')) {
+    return { upiId: 'somnath.trust@sbi', trustName: 'Shree Somnath Trust' };
+  }
+  if (name.includes('mahakal')) {
+    return { upiId: 'mahakaleshwar.trust@pnb', trustName: 'Shri Mahakaleshwar Temple Management Committee' };
+  }
+  if (name.includes('tirupati') || name.includes('venkateswara') || name.includes('balaji')) {
+    return { upiId: 'tirupati.ttd@sbi', trustName: 'Tirumala Tirupati Devasthanams (TTD)' };
+  }
+  if (name.includes('vaishno') || name.includes('devi')) {
+    return { upiId: 'vaishnodevi.shrine@sbi', trustName: 'Shri Mata Vaishno Devi Shrine Board' };
+  }
+  return { upiId: 'templetrust@sbi', trustName: `${templeName || 'Smart Temple'} Trust` };
 };
 
 function App() {
@@ -88,10 +110,43 @@ function App() {
   const [parkingDriverName, setParkingDriverName] = useState<string>('');
   const [parkingPhone, setParkingPhone] = useState<string>('');
   const [parkingPass, setParkingPass] = useState<any>(null);
+  const [activeParkingPass, setActiveParkingPass] = useState<any>(() => {
+    try { return JSON.parse(localStorage.getItem('activeParkingPass') || 'null'); } catch { return null; }
+  });
+  const [isVacatingParking, setIsVacatingParking] = useState<boolean>(false);
   const [isReservingParking, setIsReservingParking] = useState<boolean>(false);
   const [parkingError, setParkingError] = useState<string>('');
+  
+  // Gate Volunteer Token Scanner state
+  const [gateTokenInput, setGateTokenInput] = useState<string>('');
+  const [gateScanResult, setGateScanResult] = useState<any>(null);
+  const [isVerifyingGateToken, setIsVerifyingGateToken] = useState<boolean>(false);
+  const [gateHistory, setGateHistory] = useState<any[]>([]);
+
+  // Emergency SOS state
+  const [sosZone, setSosZone] = useState<string>('Sanctum Sanctorum (Garbhagriha)');
+  const [sosType, setSosType] = useState<string>('Medical Emergency / Fainting');
+  const [sosPhone, setSosPhone] = useState<string>('');
+  const [sosResult, setSosResult] = useState<any>(null);
+  const [isSubmittingSos, setIsSubmittingSos] = useState<boolean>(false);
+
+  // Donation state extensions
+  const [donateTemple, setDonateTemple] = useState<string>('Shri Kashi Vishwanath Temple');
+  const [donatePan, setDonatePan] = useState<string>('');
+  const [recentDonations, setRecentDonations] = useState<any[]>(() => {
+    try { return JSON.parse(localStorage.getItem('recentDonations') || '[]'); } catch { return []; }
+  });
+
+  // Ticket Preview Details
+  const [bookedTicketDetails, setBookedTicketDetails] = useState<any>(null);
+
+  // Lost & Found extensions
   const [lfType, setLfType] = useState('child');
   const [lfDesc, setLfDesc] = useState('');
+  const [lfLocation, setLfLocation] = useState('Main Corridor / Queue');
+  const [lfContactName, setLfContactName] = useState('');
+  const [lfContactPhone, setLfContactPhone] = useState('');
+  const [isSubmittingLf, setIsSubmittingLf] = useState(false);
 
   const handleSelectParkingZone = (zoneId: 'A' | 'B' | 'C') => {
     setParkingZone(zoneId);
@@ -131,12 +186,36 @@ function App() {
 
       if (res.data.success && res.data.pass) {
         setParkingPass(res.data.pass);
+        setActiveParkingPass(res.data.pass);
+        try { localStorage.setItem('activeParkingPass', JSON.stringify(res.data.pass)); } catch {}
         setParkingData(res.data);
       }
     } catch (err: any) {
       setParkingError(err.response?.data?.detail || 'Slot reservation failed. Please try again.');
     } finally {
       setIsReservingParking(false);
+    }
+  };
+
+  const handleVacateParking = async (passToVacate?: any) => {
+    const target = passToVacate || parkingPass || activeParkingPass;
+    if (!target) return;
+    setIsVacatingParking(true);
+    try {
+      const res = await axios.post(`${API_URL}/services/parking/vacate`, {
+        zone_id: target.zone_id || parkingZone,
+        slot_name: target.slot_name
+      });
+      if (res.data.success) {
+        setParkingPass(null);
+        setActiveParkingPass(null);
+        try { localStorage.removeItem('activeParkingPass'); } catch {}
+        fetchServices();
+      }
+    } catch (err: any) {
+      console.error('Vacate parking error:', err);
+    } finally {
+      setIsVacatingParking(false);
     }
   };
 
@@ -148,6 +227,74 @@ function App() {
     setParkingPhone('');
     setParkingError('');
     fetchServices();
+  };
+
+  const handleVerifyGateToken = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!gateTokenInput.trim()) return;
+    setIsVerifyingGateToken(true);
+    setGateScanResult(null);
+    try {
+      const res = await axios.post(`${API_URL}/gate/verify-token`, {
+        token: gateTokenInput.trim().toUpperCase()
+      });
+      setGateScanResult(res.data);
+      setGateHistory(prev => [res.data, ...prev.slice(0, 9)]);
+      if (res.data.success) {
+        setGateTokenInput('');
+        fetchQueueStatus();
+      }
+    } catch (err: any) {
+      const errData = {
+        success: false,
+        status: 'NOT_FOUND',
+        message: err.response?.data?.detail || `Pass '${gateTokenInput.trim().toUpperCase()}' not found in database. Invalid pass.`,
+        token: gateTokenInput.trim().toUpperCase(),
+        is_duplicate: false
+      };
+      setGateScanResult(errData);
+      setGateHistory(prev => [errData, ...prev.slice(0, 9)]);
+    } finally {
+      setIsVerifyingGateToken(false);
+    }
+  };
+
+  const handleTriggerSos = async () => {
+    setIsSubmittingSos(true);
+    try {
+      const res = await axios.post(`${API_URL}/services/sos`, {
+        user_name: userDashboard?.user?.name || 'Devotee',
+        location: sosZone,
+        emergency_type: sosType,
+        contact_phone: sosPhone.trim() || undefined
+      });
+      setSosResult(res.data?.alert || {
+        emergency_type: sosType,
+        location: sosZone,
+        timestamp: new Date().toLocaleTimeString(),
+        status: 'DISPATCHED'
+      });
+      setSosSent(true);
+    } catch (e) {
+      setSosResult({
+        emergency_type: sosType,
+        location: sosZone,
+        timestamp: new Date().toLocaleTimeString(),
+        status: 'DISPATCHED'
+      });
+      setSosSent(true);
+    } finally {
+      setIsSubmittingSos(false);
+    }
+  };
+
+  const handleResolveLostFound = async (itemId: number) => {
+    try {
+      await axios.post(`${API_URL}/services/lostfound/${itemId}/resolve`);
+      fetchServices();
+    } catch (e) {
+      console.error(e);
+    }
   };
   
   const fetchServices = async () => {
@@ -318,8 +465,25 @@ function App() {
       }, {
         headers: { Authorization: `Bearer ${token}` }
       });
+      const tokenNumber = res.data.token_number;
       setBookingMessage(`Success!`);
-      setBookedToken(res.data.token_number);
+      setBookedToken(tokenNumber);
+
+      const matchedTemple = temples.find((t: any) => String(t.id) === String(selectedTemple));
+      const matchedSlot = slots.find((s: any) => String(s.id) === String(selectedSlot));
+      const passInfo = {
+        token: tokenNumber,
+        temple_name: matchedTemple?.name || 'Temple',
+        city: matchedTemple?.city || '',
+        date: selectedDate,
+        start_time: matchedSlot?.start_time || '',
+        end_time: matchedSlot?.end_time || '',
+        user_name: userDashboard?.user?.name || 'Devotee',
+        status: 'CONFIRMED'
+      };
+      setBookedTicketDetails(passInfo);
+      setTicketData(passInfo);
+
       fetchSlots(); // Refresh availability
       fetchQueueStatus(); // Refresh queue
       fetchUserDashboard(); // Refresh devotee dashboard bookings
@@ -390,7 +554,8 @@ function App() {
   };
 
   const handleCopyUpi = () => {
-    navigator.clipboard.writeText("templetrust@sbi");
+    const upiCfg = getTempleUpiConfig(donateTemple);
+    navigator.clipboard.writeText(upiCfg.upiId);
     setCopiedUpi(true);
     setTimeout(() => setCopiedUpi(false), 2500);
   };
@@ -401,34 +566,53 @@ function App() {
     const nameVal = donateDevoteeName || userDashboard?.user?.name || 'Devotee';
     const purposeVal = donatePurpose || 'General Temple Trust Fund';
     const utrVal = donateUtr || `UPI-${Math.floor(100000000000 + Math.random() * 900000000000)}`;
+    const templeVal = donateTemple || 'Shri Kashi Vishwanath Temple';
 
     try {
       const res = await axios.post(`${API_URL}/services/donate`, {
         user_name: nameVal,
         amount: amountVal,
         purpose: purposeVal,
+        temple_name: templeVal,
         utr_number: utrVal,
+        pan_number: donatePan.trim() || undefined,
         receipt_image: donateScreenshot ? 'attached' : null
       });
-      setDonateReceiptData(res.data.receipt || {
+      const receipt = res.data.receipt || {
         receipt_id: `REC-${Date.now().toString().slice(-6)}`,
         user_name: nameVal,
         amount: amountVal,
+        temple_name: templeVal,
         purpose: purposeVal,
         utr_number: utrVal,
+        pan_number: donatePan.trim() || 'N/A',
         timestamp: new Date().toLocaleString(),
         status: 'VERIFIED'
+      };
+      setDonateReceiptData(receipt);
+      setRecentDonations((prev) => {
+        const updated = [receipt, ...prev.filter((r: any) => r.receipt_id !== receipt.receipt_id)].slice(0, 5);
+        try { localStorage.setItem('recentDonations', JSON.stringify(updated)); } catch {}
+        return updated;
       });
       setDonateStep('receipt');
     } catch (e) {
-      setDonateReceiptData({
+      const fallbackReceipt = {
         receipt_id: `REC-${Date.now().toString().slice(-6)}`,
         user_name: nameVal,
         amount: amountVal,
+        temple_name: templeVal,
         purpose: purposeVal,
         utr_number: utrVal,
+        pan_number: donatePan.trim() || 'N/A',
         timestamp: new Date().toLocaleString(),
         status: 'VERIFIED'
+      };
+      setDonateReceiptData(fallbackReceipt);
+      setRecentDonations((prev) => {
+        const updated = [fallbackReceipt, ...prev.filter((r: any) => r.receipt_id !== fallbackReceipt.receipt_id)].slice(0, 5);
+        try { localStorage.setItem('recentDonations', JSON.stringify(updated)); } catch {}
+        return updated;
       });
       setDonateStep('receipt');
     } finally {
@@ -979,9 +1163,71 @@ function App() {
                         </div>
                       </div>
 
+                      {/* Persistent Active Parking Pass Card */}
+                      {activeParkingPass && (
+                        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-xl p-3 mb-3 flex flex-col gap-2 shadow-sm animate-in fade-in">
+                          <div className="flex justify-between items-center">
+                            <span className="text-[10px] font-black uppercase tracking-wider text-blue-900 flex items-center gap-1.5">
+                              <Car className="w-3.5 h-3.5 text-blue-600" />
+                              {isHindi ? "सक्रिय पार्किंग ई-पास" : "Active Parking Bay"}
+                            </span>
+                            <span className="bg-blue-600 text-white font-mono font-black text-xs px-2 py-0.5 rounded shadow-sm">
+                              {activeParkingPass.slot_name}
+                            </span>
+                          </div>
+                          <div className="text-[11px] font-bold text-gray-700 flex justify-between items-center">
+                            <span className="font-mono bg-white px-1.5 py-0.5 rounded border border-blue-100 text-[10px]">
+                              {activeParkingPass.vehicle_number}
+                            </span>
+                            <span className="text-gray-500 text-[10px] truncate max-w-[130px]">
+                              {activeParkingPass.gate}
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-2 gap-1.5 pt-1 border-t border-blue-100">
+                            <button
+                              type="button"
+                              onClick={() => { setParkingPass(activeParkingPass); setActiveServiceModal('parking'); }}
+                              className="py-1 bg-white hover:bg-blue-50 text-blue-700 border border-blue-300 font-black text-[10px] rounded-lg transition active:scale-95"
+                            >
+                              {isHindi ? "ई-पास देखें" : "View Pass"}
+                            </button>
+                            <button
+                              type="button"
+                              disabled={isVacatingParking}
+                              onClick={() => handleVacateParking(activeParkingPass)}
+                              className="py-1 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 font-black text-[10px] rounded-lg transition active:scale-95 disabled:opacity-50"
+                            >
+                              {isVacatingParking ? "..." : (isHindi ? "खाली करें" : "Vacate Bay")}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Persistent Recent 80G Donation Receipt Card */}
+                      {recentDonations && recentDonations.length > 0 && (
+                        <div className="bg-emerald-50/80 border-2 border-emerald-200 rounded-xl p-2.5 mb-3 flex items-center justify-between shadow-sm animate-in fade-in">
+                          <div className="overflow-hidden pr-2">
+                            <div className="text-[10px] font-black uppercase text-emerald-900 flex items-center gap-1">
+                              <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                              {isHindi ? "80G दान रसीद" : "80G Donation Receipt"}
+                            </div>
+                            <div className="text-xs font-black text-gray-800">
+                              ₹{recentDonations[0].amount} • <span className="font-mono text-[10px] text-gray-500 font-normal">{recentDonations[0].receipt_id}</span>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => { setDonateReceiptData(recentDonations[0]); setDonateStep('receipt'); setActiveServiceModal('donate'); }}
+                            className="px-2.5 py-1 bg-white hover:bg-emerald-50 text-emerald-700 border border-emerald-300 font-black text-[10px] rounded-lg shadow-sm transition active:scale-95 whitespace-nowrap"
+                          >
+                            {isHindi ? "रसीद देखें" : "View Receipt"}
+                          </button>
+                        </div>
+                      )}
+
                       {/* Services Grid */}
                       <div className="grid grid-cols-2 gap-2.5">
-                        <button onClick={() => setActiveServiceModal('sos')} className="bg-red-50 text-red-600 p-2.5 rounded-xl font-bold flex flex-col items-center justify-center gap-1.5 hover:bg-red-100 transition border border-red-100 active:scale-95 text-xs">
+                        <button onClick={() => { setSosSent(false); setActiveServiceModal('sos'); }} className="bg-red-50 text-red-600 p-2.5 rounded-xl font-bold flex flex-col items-center justify-center gap-1.5 hover:bg-red-100 transition border border-red-100 active:scale-95 text-xs">
                           <AlertTriangle className="w-5 h-5"/>
                           <span className="text-[10px] uppercase font-black tracking-wider">{isHindi ? "आपातकालीन SOS" : "Emergency SOS"}</span>
                         </button>
@@ -1007,75 +1253,225 @@ function App() {
                   <div className="w-full md:w-2/3 flex flex-col h-[600px]">
                     {!showBookingForm ? (
                       <div className="flex flex-col h-full bg-white rounded-2xl p-6 border border-gray-100 shadow-sm overflow-hidden">
-                        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
-                          <div>
-                            <h3 className="text-2xl font-black text-gray-900 tracking-tight">{isHindi ? "मंदिर चुनें" : "Select Temple"}</h3>
-                            <p className="text-sm font-medium text-gray-500">{isHindi ? "दर्शन के लिए अपना गंतव्य चुनें" : "Choose your destination for Darshan"}</p>
+                        <div className="flex flex-col gap-3 mb-4">
+                          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-2">
+                            <div>
+                              <h3 className="text-2xl font-black text-gray-900 tracking-tight">{isHindi ? "मंदिर चुनें" : "Select Temple"}</h3>
+                              <p className="text-sm font-medium text-gray-500">{isHindi ? "दर्शन के लिए अपना गंतव्य चुनें" : "Choose your destination for Darshan"}</p>
+                            </div>
+                            <div className="text-xs font-bold text-gray-400">
+                              {temples.filter((t: any) => {
+                                const matchCity = selectedCity === 'All Cities' || normalizeCity(t.city) === selectedCity;
+                                const matchSearch = !searchQuery.trim() || 
+                                  t.name.toLowerCase().includes(searchQuery.toLowerCase().trim()) || 
+                                  normalizeCity(t.city).toLowerCase().includes(searchQuery.toLowerCase().trim());
+                                return matchCity && matchSearch;
+                              }).length} {isHindi ? "मंदिर उपलब्ध" : "temples available"}
+                            </div>
                           </div>
-                          <select 
-                            className="w-full md:w-auto border p-3 rounded-xl bg-gray-50 font-bold text-gray-700 focus:ring-2 focus:ring-orange-500 outline-none transition cursor-pointer"
-                            value={selectedCity}
-                            onChange={(e) => setSelectedCity(e.target.value)}
-                          >
-                            {['All Cities', ...Array.from(new Set(temples.map((t: any) => normalizeCity(t.city)).filter(Boolean))).sort()].map((city: any, i: number) => (
-                              <option key={i} value={city}>{city}</option>
-                            ))}
-                          </select>
+
+                          {/* Search & City Filter Bar */}
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                            <div className="sm:col-span-2 relative">
+                              <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                              <input
+                                type="text"
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                placeholder={isHindi ? "मंदिर का नाम या शहर खोजें..." : "Search temple by name or city..."}
+                                className="w-full pl-9 pr-8 py-2.5 bg-gray-50 border-2 border-gray-100 rounded-xl text-sm font-bold text-gray-800 placeholder-gray-400 outline-none focus:bg-white focus:border-orange-500 transition"
+                              />
+                              {searchQuery && (
+                                <button
+                                  type="button"
+                                  onClick={() => setSearchQuery('')}
+                                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-1"
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
+
+                            <select 
+                              className="border-2 border-gray-100 p-2.5 rounded-xl bg-gray-50 font-bold text-sm text-gray-700 focus:bg-white focus:border-orange-500 outline-none transition cursor-pointer"
+                              value={selectedCity}
+                              onChange={(e) => setSelectedCity(e.target.value)}
+                            >
+                              {['All Cities', ...Array.from(new Set(temples.map((t: any) => normalizeCity(t.city)).filter(Boolean))).sort()].map((city: any, i: number) => (
+                                <option key={i} value={city}>{city}</option>
+                              ))}
+                            </select>
+                          </div>
                         </div>
                         
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 overflow-y-auto pr-2 pb-4">
-                          {temples.filter((t: any) => (selectedCity === 'All Cities' || normalizeCity(t.city) === selectedCity)).map((t: any) => {
-                            const density = t.id % 3 === 0 ? 'HIGH' : t.id % 2 === 0 ? 'MODERATE' : 'LOW';
-                            const isFestival = t.id % 4 === 0;
-                            return (
-                              <button 
-                                key={t.id} 
-                                onClick={() => { setSelectedTemple(t.id); setShowBookingForm(true); }}
-                                className="text-left bg-white border-2 border-gray-100 p-5 rounded-2xl hover:border-orange-400 hover:shadow-lg transition-all group relative overflow-hidden flex flex-col justify-between min-h-[140px]"
-                              >
-                                {isFestival && <div className="absolute top-0 right-0 bg-red-500 text-white text-[9px] font-black px-3 py-1 rounded-bl-xl tracking-wider shadow-sm z-10">SANKASHTI - RUSH</div>}
-                                <div>
-                                  <div className="font-black text-gray-900 text-lg group-hover:text-orange-600 transition-colors pr-16 leading-tight mb-1">{t.name}</div>
-                                  <div className="text-xs font-bold text-gray-400 flex items-center gap-1"><MapPin className="w-3 h-3"/>{normalizeCity(t.city)}</div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 overflow-y-auto pr-2 pb-4 flex-1">
+                          {(() => {
+                            const filteredTemples = temples.filter((t: any) => {
+                              const matchCity = selectedCity === 'All Cities' || normalizeCity(t.city) === selectedCity;
+                              const matchSearch = !searchQuery.trim() || 
+                                t.name.toLowerCase().includes(searchQuery.toLowerCase().trim()) || 
+                                normalizeCity(t.city).toLowerCase().includes(searchQuery.toLowerCase().trim());
+                              return matchCity && matchSearch;
+                            });
+
+                            if (filteredTemples.length === 0) {
+                              return (
+                                <div className="col-span-1 sm:col-span-2 flex flex-col items-center justify-center p-12 bg-gray-50 rounded-2xl border-2 border-dashed border-gray-200 text-center">
+                                  <Search className="w-10 h-10 text-gray-300 mb-2" />
+                                  <h4 className="font-bold text-gray-800 text-sm">{isHindi ? "कोई मंदिर नहीं मिला" : "No Temples Found"}</h4>
+                                  <p className="text-xs text-gray-500 mt-1 max-w-xs">{isHindi ? `"${searchQuery}" या "${selectedCity}" के लिए कोई परिणाम नहीं है।` : `No temples match "${searchQuery || selectedCity}".`}</p>
+                                  <button
+                                    onClick={() => { setSearchQuery(''); setSelectedCity('All Cities'); }}
+                                    className="mt-3 px-4 py-1.5 bg-orange-100 hover:bg-orange-200 text-orange-700 font-bold text-xs rounded-lg transition active:scale-95"
+                                  >
+                                    {isHindi ? "फ़िल्टर रीसेट करें" : "Reset Filters"}
+                                  </button>
                                 </div>
-                                <div className="flex justify-between items-end mt-4 pt-4 border-t border-gray-100">
-                                  <div className="text-[10px] font-black text-gray-400 uppercase tracking-wider">Crowd Density</div>
-                                  <div className={`text-[10px] font-black uppercase px-2 py-1 rounded-md tracking-wider shadow-sm ${density === 'HIGH' ? 'bg-red-50 text-red-600 border border-red-100' : density === 'MODERATE' ? 'bg-yellow-50 text-yellow-600 border border-yellow-100' : 'bg-green-50 text-green-600 border border-green-100'}`}>
-                                    {density}
+                              );
+                            }
+
+                            return filteredTemples.map((t: any) => {
+                              const density = t.id % 3 === 0 ? 'HIGH' : t.id % 2 === 0 ? 'MODERATE' : 'LOW';
+                              const isFestival = t.id % 4 === 0;
+                              return (
+                                <button 
+                                  key={t.id} 
+                                  onClick={() => { setSelectedTemple(t.id); setShowBookingForm(true); }}
+                                  className="text-left bg-white border-2 border-gray-100 p-5 rounded-2xl hover:border-orange-400 hover:shadow-lg transition-all group relative overflow-hidden flex flex-col justify-between min-h-[140px]"
+                                >
+                                  {isFestival && <div className="absolute top-0 right-0 bg-red-500 text-white text-[9px] font-black px-3 py-1 rounded-bl-xl tracking-wider shadow-sm z-10">SANKASHTI - RUSH</div>}
+                                  <div>
+                                    <div className="font-black text-gray-900 text-lg group-hover:text-orange-600 transition-colors pr-16 leading-tight mb-1">{t.name}</div>
+                                    <div className="text-xs font-bold text-gray-400 flex items-center gap-1"><MapPin className="w-3 h-3"/>{normalizeCity(t.city)}</div>
                                   </div>
-                                </div>
-                              </button>
-                            );
-                          })}
+                                  <div className="flex justify-between items-end mt-4 pt-4 border-t border-gray-100">
+                                    <div className="text-[10px] font-black text-gray-400 uppercase tracking-wider">Crowd Density</div>
+                                    <div className={`text-[10px] font-black uppercase px-2 py-1 rounded-md tracking-wider shadow-sm ${density === 'HIGH' ? 'bg-red-50 text-red-600 border border-red-100' : density === 'MODERATE' ? 'bg-yellow-50 text-yellow-600 border border-yellow-100' : 'bg-green-50 text-green-600 border border-green-100'}`}>
+                                      {density}
+                                    </div>
+                                  </div>
+                                </button>
+                              );
+                            });
+                          })()}
                         </div>
                       </div>
                     ) : (
                       <div className="flex-1 flex flex-col animate-in slide-in-from-right-8 duration-500 h-full">
                         
                         {ticketViewToken || bookedToken ? (
-                          <div className="bg-white border-2 border-orange-500 rounded-2xl p-6 md:p-8 shadow-2xl relative overflow-hidden text-center animate-in zoom-in-95 duration-500 flex flex-col h-full justify-center">
-                            <div className="absolute top-0 right-0 bg-green-500 text-white text-[10px] font-black px-4 py-1 rounded-bl-lg uppercase tracking-wider flex items-center gap-1">
-                              <CheckCircle2 className="w-3 h-3" /> Confirmed
+                          <div className="bg-white border-2 border-orange-500 rounded-2xl p-5 md:p-7 shadow-2xl relative overflow-hidden text-center animate-in zoom-in-95 duration-500 flex flex-col h-full justify-between overflow-y-auto">
+                            {/* Confirmed Badge */}
+                            <div className="absolute top-0 right-0 bg-emerald-600 text-white text-[10px] font-black px-4 py-1.5 rounded-bl-xl uppercase tracking-wider flex items-center gap-1.5 shadow-sm">
+                              <CheckCircle2 className="w-3.5 h-3.5" /> {isHindi ? "दर्शन पास कन्फर्म" : "Pass Confirmed"}
                             </div>
                             
-                            <h3 className="text-2xl font-black text-gray-900 mb-2 mt-4">Booking Successful!</h3>
-                            <p className="text-gray-500 text-sm mb-6">Please present this QR code at the temple entry gate.</p>
-                            
-                            <div className="bg-gray-50 rounded-3xl p-6 md:p-8 border border-gray-200 inline-block mb-6 shadow-inner relative mx-auto w-fit">
-                              <div className="absolute -left-3 top-1/2 w-6 h-6 bg-white rounded-full border border-gray-200"></div>
-                              <div className="absolute -right-3 top-1/2 w-6 h-6 bg-white rounded-full border border-gray-200"></div>
-                              <QRCodeSVG value={`${window.location.origin}/?ticket=${ticketViewToken || bookedToken}`} size={160} level="H" includeMargin={false} />
-                              <div className="mt-6 text-3xl font-black text-orange-600 tracking-widest">{ticketViewToken || bookedToken}</div>
-                              <div className="text-[10px] font-bold text-gray-400 uppercase mt-1">E-Ticket Token</div>
+                            <div>
+                              <h3 className="text-xl md:text-2xl font-black text-gray-900 mb-1 mt-2">
+                                {isHindi ? "दर्शन पास सफलतापूर्वक जारी!" : "e-Darshan Pass Generated!"}
+                              </h3>
+                              <p className="text-gray-500 text-xs">
+                                {isHindi ? "कृपया मंदिर प्रवेश द्वार पर यह डिजिटल पास और क्यूआर कोड दिखाएं।" : "Present this QR pass at the entrance scanner on your visit date."}
+                              </p>
                             </div>
                             
-                            <div className="p-4 bg-orange-50 rounded-xl border border-orange-100 mb-6 text-left shadow-sm">
-                               <div className="text-orange-800 font-black text-sm mb-1 flex items-center gap-2"><Clock className="w-4 h-4"/> Live Queue Prediction</div>
-                               <div className="text-orange-700/80 text-xs font-medium leading-relaxed">Based on real-time YOLOv8 CCTV analytics, expect a 15-20 minute wait when you arrive for this slot. Keep your QR code ready for scanning.</div>
+                            {/* Pass Summary Details Card */}
+                            <div className="bg-gradient-to-br from-orange-50/70 via-white to-orange-50/30 border-2 border-orange-200 rounded-2xl p-4 text-left shadow-sm my-3">
+                              <div className="flex justify-between items-start border-b border-dashed border-orange-200 pb-2.5 mb-2.5">
+                                <div>
+                                  <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{isHindi ? "मंदिर" : "Temple"}</div>
+                                  <div className="text-base font-black text-gray-900 leading-tight">
+                                    {bookedTicketDetails?.temple_name || temples.find((t: any) => String(t.id) === String(selectedTemple))?.name || 'Temple'}
+                                  </div>
+                                  <div className="text-xs font-bold text-gray-500 flex items-center gap-1 mt-0.5">
+                                    <MapPin className="w-3 h-3 text-orange-500" />
+                                    {bookedTicketDetails?.city || normalizeCity(temples.find((t: any) => String(t.id) === String(selectedTemple))?.city || '')}
+                                  </div>
+                                </div>
+                                <div className="text-right">
+                                  <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{isHindi ? "श्रद्धालु" : "Devotee"}</div>
+                                  <div className="text-sm font-black text-gray-800">
+                                    {bookedTicketDetails?.user_name || userDashboard?.user?.name || 'Devotee'}
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="grid grid-cols-2 gap-3 mb-3">
+                                <div className="bg-white/80 p-2.5 rounded-xl border border-orange-100">
+                                  <div className="text-[10px] font-black text-gray-400 uppercase">{isHindi ? "दर्शन तिथि" : "Darshan Date"}</div>
+                                  <div className="text-sm font-black text-gray-900 mt-0.5">
+                                    {bookedTicketDetails?.date || selectedDate}
+                                  </div>
+                                </div>
+                                <div className="bg-white/80 p-2.5 rounded-xl border border-orange-100">
+                                  <div className="text-[10px] font-black text-gray-400 uppercase">{isHindi ? "समय स्लॉट" : "Time Slot"}</div>
+                                  <div className="text-sm font-black text-orange-700 mt-0.5">
+                                    {bookedTicketDetails?.start_time ? `${formatTime(bookedTicketDetails.start_time)} - ${formatTime(bookedTicketDetails.end_time)}` : 'Morning Darshan'}
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* QR Code and Token */}
+                              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-white p-3 rounded-xl border border-orange-200">
+                                <div className="p-2 bg-gray-50 rounded-xl border border-gray-200 shadow-inner">
+                                  <QRCodeSVG 
+                                    value={`${window.location.origin}/?ticket=${ticketViewToken || bookedToken}`} 
+                                    size={110} 
+                                    level="H" 
+                                    includeMargin={false} 
+                                  />
+                                </div>
+                                <div className="text-center sm:text-right flex-1">
+                                  <div className="text-[10px] font-bold text-gray-400 uppercase">{isHindi ? "ई-टिकट टोकन नंबर" : "e-Ticket Token"}</div>
+                                  <div className="text-2xl font-black text-orange-600 font-mono tracking-widest my-0.5">
+                                    {ticketViewToken || bookedToken}
+                                  </div>
+                                  <div className="text-[10px] text-emerald-700 font-bold flex items-center justify-center sm:justify-end gap-1">
+                                    <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                    <span>{isHindi ? "वैध दर्शन पास" : "Verified & Valid"}</span>
+                                  </div>
+                                </div>
+                              </div>
                             </div>
 
-                            <div className="flex gap-4 mt-auto">
-                              <button onClick={() => {setTicketViewToken(''); setBookedToken(''); setShowBookingForm(false);}} className="flex-1 bg-gray-900 hover:bg-black text-white font-bold py-4 rounded-xl transition shadow-md active:scale-95">Back to Dashboard</button>
+                            {/* Prediction Banner */}
+                            <div className="p-3 bg-orange-50/80 rounded-xl border border-orange-100 mb-3 text-left shadow-sm">
+                              <div className="text-orange-900 font-black text-xs mb-0.5 flex items-center gap-1.5">
+                                <Clock className="w-3.5 h-3.5 text-orange-600"/>
+                                <span>{isHindi ? "वास्तविक समय कतार अनुमान" : "Real-time Queue Prediction"}</span>
+                              </div>
+                              <div className="text-orange-800/80 text-[11px] font-medium leading-relaxed">
+                                {isHindi 
+                                  ? "CCTV AI विश्लेषण के अनुसार, आपके स्लॉट समय पर अनुमानित प्रतीक्षा समय लगभग 10-15 मिनट रहेगा।" 
+                                  : "Based on CCTV analytics, estimated darshan wait time is 10-15 minutes. Please arrive 10 mins before slot."}
+                              </div>
+                            </div>
+
+                            {/* Action Buttons */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-auto">
+                              <button 
+                                type="button"
+                                onClick={() => {
+                                  const tok = ticketViewToken || bookedToken;
+                                  setTicketViewToken(tok);
+                                  window.history.pushState({}, '', `/?ticket=${tok}`);
+                                }} 
+                                className="py-3 px-4 bg-orange-600 hover:bg-orange-700 text-white font-black rounded-xl text-xs transition shadow-md flex items-center justify-center gap-1.5 active:scale-95"
+                              >
+                                <QrCode className="w-4 h-4" />
+                                <span>{isHindi ? "पूर्ण ई-पास देखें / प्रिंट करें" : "Open Full E-Pass"}</span>
+                              </button>
+                              <button 
+                                type="button"
+                                onClick={() => { 
+                                  setBookedToken(''); 
+                                  setBookedTicketDetails(null); 
+                                  setShowBookingForm(false); 
+                                }} 
+                                className="py-3 px-4 bg-gray-900 hover:bg-black text-white font-black rounded-xl text-xs transition shadow-md active:scale-95"
+                              >
+                                {isHindi ? "डैशबोर्ड पर वापस जाएं" : "Back to Dashboard"}
+                              </button>
                             </div>
                           </div>
                         ) : (
@@ -1392,12 +1788,121 @@ function App() {
                       </div>
                     </div>
                   </div>
-                )}
+                )}                {/* NEW: Gate Volunteer Entry Scanner & Token Verifier */}
+                <div className="mt-6 bg-gradient-to-br from-slate-900 to-indigo-950 text-white p-6 rounded-2xl shadow-xl border border-indigo-800">
+                  <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-2 mb-4 border-b border-indigo-800/80 pb-3">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2.5 bg-orange-500 text-white rounded-xl shadow">
+                        <QrCode className="w-6 h-6" />
+                      </div>
+                      <div>
+                        <h3 className="font-black text-xl tracking-tight text-white flex items-center gap-2">
+                          Gate Volunteer Token Verifier & Scanner
+                          <span className="text-[10px] uppercase font-bold tracking-widest bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full">
+                            Active Gate #1
+                          </span>
+                        </h3>
+                        <p className="text-xs text-indigo-200">
+                          Scan QR barcode or enter Devotee Token to verify darshan pass, grant entry, and flag duplicates.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
 
+                  {/* Input form */}
+                  <form onSubmit={handleVerifyGateToken} className="flex flex-col sm:flex-row gap-2.5 mb-4">
+                    <div className="relative flex-1">
+                      <input
+                        type="text"
+                        value={gateTokenInput}
+                        onChange={(e) => setGateTokenInput(e.target.value.toUpperCase())}
+                        placeholder="Enter Token (e.g. T-12345 or scan QR code)"
+                        className="w-full px-4 py-3.5 bg-indigo-950/80 border-2 border-indigo-700 rounded-xl text-white font-mono font-bold text-base placeholder-indigo-400 outline-none focus:border-orange-500 transition tracking-wider uppercase"
+                      />
+                      {gateTokenInput && (
+                        <button
+                          type="button"
+                          onClick={() => setGateTokenInput('')}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-indigo-400 hover:text-white"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={isVerifyingGateToken || !gateTokenInput.trim()}
+                      className="py-3.5 px-6 bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white font-black rounded-xl text-sm transition shadow-lg flex items-center justify-center gap-2 active:scale-95 whitespace-nowrap"
+                    >
+                      {isVerifyingGateToken ? (
+                        <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <>
+                          <CheckCircle2 className="w-5 h-5" />
+                          <span>Verify & Grant Entry</span>
+                        </>
+                      )}
+                    </button>
+                  </form>
 
-                
+                  {/* Live Scan Result Banner */}
+                  {gateScanResult && (
+                    <div className={`p-4 rounded-xl border-2 mb-4 animate-in zoom-in-95 ${gateScanResult.success ? 'bg-emerald-950/80 border-emerald-500 text-emerald-100' : gateScanResult.is_duplicate ? 'bg-red-950/90 border-red-500 text-red-100' : 'bg-amber-950/80 border-amber-500 text-amber-100'}`}>
+                      <div className="flex items-start gap-3">
+                        <div className={`p-2 rounded-lg shrink-0 ${gateScanResult.success ? 'bg-emerald-600' : gateScanResult.is_duplicate ? 'bg-red-600' : 'bg-amber-600'} text-white`}>
+                          {gateScanResult.success ? <CheckCircle2 className="w-6 h-6" /> : <AlertTriangle className="w-6 h-6" />}
+                        </div>
+                        <div className="flex-1">
+                          <div className="flex justify-between items-center mb-1">
+                            <span className="font-mono font-black text-lg tracking-wider text-white">
+                              {gateScanResult.token}
+                            </span>
+                            <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider ${gateScanResult.success ? 'bg-emerald-500 text-black' : 'bg-red-500 text-white'}`}>
+                              {gateScanResult.status}
+                            </span>
+                          </div>
+                          <p className="font-bold text-sm mb-2">{gateScanResult.message}</p>
+                          {gateScanResult.devotee_name && (
+                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs bg-black/30 p-2.5 rounded-lg border border-white/10">
+                              <div>
+                                <span className="text-gray-400 block text-[10px] uppercase">Devotee</span>
+                                <span className="font-bold text-white">{gateScanResult.devotee_name}</span>
+                              </div>
+                              <div>
+                                <span className="text-gray-400 block text-[10px] uppercase">Temple</span>
+                                <span className="font-bold text-white truncate block">{gateScanResult.temple_name}</span>
+                              </div>
+                              <div className="col-span-2 sm:col-span-1">
+                                <span className="text-gray-400 block text-[10px] uppercase">Slot</span>
+                                <span className="font-bold text-white">{gateScanResult.slot_date} {gateScanResult.slot_time}</span>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
-                
+                  {/* Recent Scan History */}
+                  {gateHistory.length > 0 && (
+                    <div className="mt-4 pt-3 border-t border-indigo-900">
+                      <div className="text-[11px] font-bold uppercase tracking-wider text-indigo-300 mb-2">
+                        Recent Gate Verification Trail ({gateHistory.length})
+                      </div>
+                      <div className="flex flex-col gap-1.5 max-h-40 overflow-y-auto pr-1">
+                        {gateHistory.map((item, idx) => (
+                          <div key={idx} className="flex justify-between items-center bg-indigo-950/50 px-3 py-1.5 rounded-lg text-xs border border-indigo-900/60">
+                            <span className="font-mono font-bold text-white">{item.token}</span>
+                            <span className="text-indigo-200 truncate mx-2">{item.devotee_name || 'Pass'}</span>
+                            <span className={`text-[10px] font-black px-2 py-0.5 rounded ${item.success ? 'bg-emerald-500/30 text-emerald-300' : 'bg-red-500/30 text-red-300'}`}>
+                              {item.status}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
 
               </>
             ) : (
@@ -1656,393 +2161,599 @@ function App() {
             <button onClick={() => {setActiveServiceModal(null); setSosSent(false); setParkingError('');}} className="absolute top-4 right-4 text-gray-400 hover:text-gray-900 bg-gray-100 rounded-full p-2 z-20"><X className="w-5 h-5"/></button>
             
             {activeServiceModal === 'sos' && (
-              <div className="p-8 text-center">
-                <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <AlertTriangle className="w-10 h-10 text-red-600" />
-                </div>
-                <h3 className="text-2xl font-black text-gray-900 mb-2">Emergency SOS</h3>
-                <p className="text-gray-500 mb-8 font-medium">This will instantly alert Temple Security and broadcast your approximate zone via CCTV tracking.</p>
-                {sosSent ? (
-                  <div className="bg-green-50 text-green-700 p-4 rounded-xl font-bold border border-green-200">Alert Sent! Security is on the way.</div>
-                ) : (
-                  <button onClick={async () => {
-                    try { await axios.post(`${API_URL}/services/sos`, {user_name: userDashboard?.user?.name || 'Devotee', location: 'Main Gate'}); setSosSent(true); } catch(e) {}
-                  }} className="w-full py-4 bg-red-600 hover:bg-red-700 text-white font-black text-xl tracking-wider rounded-xl shadow-lg active:scale-95 transition">TRIGGER SOS</button>
-                )}
-              </div>
-            )}
-
-            {activeServiceModal === 'donate' && (
               <div className="p-6 md:p-8 flex flex-col max-h-[85vh] overflow-y-auto">
-                {/* Header */}
-                <div className="flex items-center justify-between border-b border-gray-100 pb-3 mb-3">
+                <div className="flex items-center justify-between border-b border-gray-100 pb-3 mb-4">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center font-bold">
-                      <Heart className="w-5 h-5 fill-emerald-600" />
+                    <div className="w-10 h-10 bg-red-100 text-red-600 rounded-full flex items-center justify-center font-bold">
+                      <AlertTriangle className="w-5 h-5 text-red-600" />
                     </div>
                     <div>
                       <h3 className="text-lg md:text-xl font-black text-gray-900 leading-tight">
-                        {isHindi ? "मंदिर दान एवं हुंडी सेवा" : "Temple Daan & E-Hundi"}
+                        {isHindi ? "आपातकालीन सुरक्षा एवं चिकित्सा SOS" : "Emergency SOS Assistance"}
                       </h3>
-                      <p className="text-gray-500 text-[11px]">
-                        {isHindi ? "पवित्र सेवा संकल्प एवं डिजिटल दान रसीद" : "Official Digital Seva & Trust Contribution"}
+                      <p className="text-gray-500 text-[11px] font-medium">
+                        {isHindi ? "मंदिर सुरक्षा नियंत्रण कक्ष एवं त्वरित चिकित्सा सहायता" : "Direct alert to Temple Security Control Room & Rapid Response Team"}
                       </p>
                     </div>
                   </div>
-                  <button
-                    onClick={handleCloseDonateModal}
-                    className="p-1.5 rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition"
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
                 </div>
 
-                {/* Step Indicator */}
-                <div className="grid grid-cols-3 gap-1.5 bg-gray-100 p-1 rounded-xl text-[11px] font-bold mb-4">
-                  <div className={`py-1.5 text-center rounded-lg transition-all ${donateStep === 'select' ? 'bg-white text-emerald-700 shadow-sm font-black' : 'text-gray-400'}`}>
-                    1. {isHindi ? "राशि चुनें" : "Amount"}
-                  </div>
-                  <div className={`py-1.5 text-center rounded-lg transition-all ${donateStep === 'pay' ? 'bg-white text-emerald-700 shadow-sm font-black' : 'text-gray-400'}`}>
-                    2. {isHindi ? "UPI & प्रूफ" : "Pay & Proof"}
-                  </div>
-                  <div className={`py-1.5 text-center rounded-lg transition-all ${donateStep === 'receipt' ? 'bg-white text-emerald-700 shadow-sm font-black' : 'text-gray-400'}`}>
-                    3. {isHindi ? "दान रसीद" : "Receipt"}
-                  </div>
-                </div>
-
-                {/* STEP 1: Select Amount and Seva */}
-                {donateStep === 'select' && (
-                  <div className="flex flex-col gap-3.5 animate-in fade-in">
-                    <div>
-                      <label className="block text-[11px] font-black uppercase text-gray-400 mb-1">
-                        {isHindi ? "भक्त का नाम" : "Devotee Name"}
-                      </label>
-                      <input 
-                        type="text" 
-                        value={donateDevoteeName} 
-                        onChange={(e) => setDonateDevoteeName(e.target.value)}
-                        placeholder={userDashboard?.user?.name || "Enter your name"}
-                        className="w-full p-2.5 border-2 border-gray-100 rounded-xl bg-gray-50 text-sm font-bold text-gray-800 outline-none focus:border-emerald-500 focus:bg-white transition"
-                      />
+                {!sosSent ? (
+                  <div className="flex flex-col gap-4 animate-in fade-in">
+                    <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs font-semibold text-red-800 leading-relaxed">
+                      ⚠️ {isHindi 
+                        ? "यह बटन दबाते ही मंदिर सुरक्षा टीम, सीसीटीवी ऑपरेटर और फर्स्ट-एड मेडिकल यूनिट को आपका अलर्ट भेजा जाएगा।" 
+                        : "Triggering this immediately dispatches Temple Security, CCTV tracking, and the Medical Rapid Response team."}
                     </div>
 
+                    {/* Zone Selector */}
                     <div>
-                      <label className="block text-[11px] font-black uppercase text-gray-400 mb-1">
-                        {isHindi ? "सेवा संकल्प" : "Seva / Purpose"}
+                      <label className="block text-[11px] font-black uppercase text-gray-500 mb-1">
+                        {isHindi ? "आपका वर्तमान स्थान / मंदिर परिसर ज़ोन" : "Your Current Location / Temple Zone"}
                       </label>
-                      <select 
-                        value={donatePurpose} 
-                        onChange={(e) => setDonatePurpose(e.target.value)}
-                        className="w-full p-2.5 border-2 border-gray-100 rounded-xl bg-gray-50 text-sm font-bold text-gray-800 outline-none focus:border-emerald-500 focus:bg-white transition cursor-pointer"
+                      <select
+                        value={sosZone}
+                        onChange={(e) => setSosZone(e.target.value)}
+                        className="w-full p-2.5 border-2 border-gray-200 rounded-xl bg-gray-50 font-bold text-sm text-gray-800 outline-none focus:border-red-500 focus:bg-white transition cursor-pointer"
                       >
-                        <option value="General Temple Trust Fund">General Temple Trust Fund (सामान्य मंदिर कोष)</option>
-                        <option value="Annadaan Mahaprasad Seva">Annadaan Mahaprasad Seva (अन्नदान महाप्रसाद सेवा)</option>
-                        <option value="Goshala Seva & Cow Care">Goshala Seva - Cow Care (गौशाला सेवा)</option>
-                        <option value="Special Puja & Deepam">Special Puja & Deepam (विशेष पूजा एवं दीप सेवा)</option>
-                        <option value="Mandir Renovation & Vikas">Mandir Renovation & Development (मंदिर विकास)</option>
+                        <option value="Sanctum Sanctorum (Garbhagriha)">Sanctum Sanctorum (गर्भगृह मुख्य दर्शन क्षेत्र)</option>
+                        <option value="Main Darshan Queue Corridor">Main Darshan Queue Corridor (मुख्य दर्शन कतार गैलरी)</option>
+                        <option value="North Entrance Gate / Screening">North Entrance Gate & Metal Detectors (उत्तर प्रवेश द्वार)</option>
+                        <option value="Vehicle Parking Ground (Zone A/B/C)">Vehicle Parking Ground (पार्किंग स्थल ज़ोन A/B/C)</option>
+                        <option value="Shoe Stand / Footwear Counter">Shoe Stand & Footwear Counter (जूता स्टैंड परिसर)</option>
+                        <option value="Prasadam & Annakshetra Hall">Prasadam & Annakshetra Dining Hall (अन्नक्षेत्र महाप्रसाद भवन)</option>
                       </select>
                     </div>
 
-                    {/* Pre-set Amount Chips */}
+                    {/* Emergency Type Selector */}
                     <div>
-                      <label className="block text-[11px] font-black uppercase text-gray-400 mb-1">
-                        {isHindi ? "पवित्र दान राशि चुनें (₹)" : "Select Daan Offering (₹)"}
+                      <label className="block text-[11px] font-black uppercase text-gray-500 mb-1.5">
+                        {isHindi ? "आपातकाल का प्रकार चुनें" : "Select Emergency Type"}
                       </label>
-                      <div className="grid grid-cols-3 gap-2">
-                        {['51', '101', '251', '501', '1100', '2100'].map(amt => (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {[
+                          { id: 'Medical Emergency / Fainting', labelHi: '🚑 चिकित्सा / बेहोशी (Medical)', labelEn: '🚑 Medical / Fainting' },
+                          { id: 'Crowd Surge / Crush Hazard', labelHi: '⚠️ अत्यधिक भीड़ / भगदड़ खतरा', labelEn: '⚠️ Crowd Surge / Crush' },
+                          { id: 'Lost Child / Missing Person', labelHi: '👶 बच्चा गुम / परिजन बिछुड़े', labelEn: '👶 Lost Child / Missing' },
+                          { id: 'Elderly Assistance', labelHi: '🦽 बुजुर्ग / दिव्यांग सहायता', labelEn: '🦽 Elderly Assistance' },
+                          { id: 'Fire / Smoke Hazard', labelHi: '🧯 अग्नि / धुआं आपातकाल', labelEn: '🧯 Fire / Smoke Hazard' },
+                          { id: 'Security Threat / Altercation', labelHi: '🛡️ सुरक्षा विवाद / चोरी', labelEn: '🛡️ Security / Theft' }
+                        ].map((item) => (
                           <button
-                            key={amt}
+                            key={item.id}
                             type="button"
-                            onClick={() => setDonateAmount(amt)}
-                            className={`py-2 rounded-xl font-black text-sm border-2 transition-all ${donateAmount === amt ? 'border-emerald-500 bg-emerald-50 text-emerald-800 shadow-sm scale-[1.02]' : 'border-gray-100 bg-gray-50 text-gray-700 hover:border-emerald-300'}`}
+                            onClick={() => setSosType(item.id)}
+                            className={`p-2.5 rounded-xl border-2 text-left font-bold text-xs transition-all ${
+                              sosType === item.id 
+                                ? 'border-red-500 bg-red-50 text-red-900 shadow-sm scale-[1.01]' 
+                                : 'border-gray-200 bg-white text-gray-700 hover:border-red-200'
+                            }`}
                           >
-                            ₹{amt}
+                            {isHindi ? item.labelHi : item.labelEn}
                           </button>
                         ))}
                       </div>
                     </div>
 
-                    {/* Custom Amount Input */}
+                    {/* Devotee Contact Phone */}
                     <div>
-                      <label className="block text-[11px] font-black uppercase text-gray-400 mb-1">
-                        {isHindi ? "या अन्य राशि दर्ज करें (₹)" : "Or Custom Amount (₹)"}
+                      <label className="block text-[11px] font-black uppercase text-gray-500 mb-1">
+                        {isHindi ? "श्रद्धालु मोबाइल नंबर (कॉल बैक हेतु)" : "Contact Mobile (for Security Call-back)"}
                       </label>
-                      <div className="relative">
-                        <span className="absolute left-3.5 top-1/2 -translate-y-1/2 font-black text-gray-400 text-sm">₹</span>
-                        <input 
-                          type="number" 
-                          min="1"
-                          placeholder="e.g. 500" 
-                          value={donateAmount} 
-                          onChange={(e) => setDonateAmount(e.target.value)}
-                          className="w-full pl-8 pr-4 py-2.5 border-2 border-gray-100 rounded-xl bg-gray-50 text-base font-black text-gray-900 outline-none focus:border-emerald-500 focus:bg-white transition"
-                        />
-                      </div>
+                      <input
+                        type="tel"
+                        value={sosPhone}
+                        onChange={(e) => setSosPhone(e.target.value)}
+                        placeholder="e.g. 9876543210"
+                        className="w-full p-2.5 border-2 border-gray-200 rounded-xl bg-gray-50 font-bold text-sm text-gray-800 outline-none focus:border-red-500 focus:bg-white transition"
+                      />
                     </div>
 
                     <button
                       type="button"
-                      disabled={!donateAmount || Number(donateAmount) <= 0}
-                      onClick={() => setDonateStep('pay')}
-                      className="w-full mt-2 py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-black rounded-xl shadow-md transition flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50 disabled:pointer-events-none"
+                      disabled={isSubmittingSos}
+                      onClick={handleTriggerSos}
+                      className="w-full py-4 bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700 disabled:opacity-50 text-white font-black text-lg tracking-wider rounded-xl shadow-xl active:scale-95 transition flex items-center justify-center gap-2"
                     >
-                      <span>{isHindi ? `₹${donateAmount || '501'} के UPI भुगतान हेतु आगे बढ़ें` : `Proceed to Pay ₹${donateAmount || '501'} via UPI`}</span>
-                      <ArrowRight className="w-4 h-4" />
-                    </button>
-                  </div>
-                )}
-
-                {/* STEP 2: Pay via UPI & Upload Screenshot Proof */}
-                {donateStep === 'pay' && (
-                  <div className="flex flex-col gap-3.5 animate-in fade-in">
-                    {/* Offering Summary Card */}
-                    <div className="bg-emerald-50 border-2 border-emerald-200 rounded-2xl p-4 flex justify-between items-center shadow-sm">
-                      <div>
-                        <div className="text-[10px] font-black text-emerald-800 uppercase tracking-wider">{donatePurpose}</div>
-                        <div className="text-sm font-black text-gray-800">{donateDevoteeName || userDashboard?.user?.name || 'Devotee'}</div>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-[10px] font-bold text-gray-500 uppercase">{isHindi ? "राशि" : "Amount"}</div>
-                        <div className="text-2xl font-black text-emerald-700">₹{donateAmount || '501'}</div>
-                      </div>
-                    </div>
-
-                    {/* Direct UPI App Button */}
-                    <a
-                      href={`upi://pay?pa=templetrust@sbi&pn=Smart%20Temple%20Trust&am=${donateAmount || '101'}&cu=INR&tn=${encodeURIComponent(donatePurpose || 'Temple Donation')}`}
-                      className="w-full py-3.5 bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-700 hover:to-green-700 text-white font-black text-center rounded-xl shadow-md transition flex items-center justify-center gap-2 active:scale-95"
-                    >
-                      <span>📲 {isHindi ? "UPI ऐप में खोलें (GPay / PhonePe / Paytm)" : "Open in UPI App (GPay / PhonePe / Paytm)"}</span>
-                    </a>
-
-                    {/* Official UPI ID with Copy Button */}
-                    <div className="bg-gray-50 border border-gray-200 rounded-xl p-3 flex items-center justify-between">
-                      <div>
-                        <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Temple Trust UPI ID</div>
-                        <div className="font-mono font-black text-sm text-gray-900">templetrust@sbi</div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={handleCopyUpi}
-                        className="px-3 py-1.5 bg-white border border-gray-300 hover:bg-gray-100 rounded-lg text-xs font-bold text-gray-700 transition flex items-center gap-1 active:scale-95 shadow-sm"
-                      >
-                        {copiedUpi ? (
-                          <>
-                            <Check className="w-3.5 h-3.5 text-emerald-600" />
-                            <span className="text-emerald-700 font-black">Copied!</span>
-                          </>
-                        ) : (
-                          <>
-                            <Copy className="w-3.5 h-3.5 text-gray-500" />
-                            <span>Copy UPI</span>
-                          </>
-                        )}
-                      </button>
-                    </div>
-
-                    {/* Show/Hide QR Code Toggle */}
-                    <button
-                      type="button"
-                      onClick={() => setShowUpiQr(!showUpiQr)}
-                      className="w-full py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl text-xs transition flex items-center justify-center gap-1.5"
-                    >
-                      <QrCode className="w-4 h-4 text-gray-600" />
-                      <span>{showUpiQr ? (isHindi ? "QR कोड छुपाएं" : "Hide QR Code") : (isHindi ? "📱 स्कैन करने हेतु UPI QR कोड देखें" : "📱 Show UPI QR Code to Scan")}</span>
-                    </button>
-
-                    {showUpiQr && (
-                      <div className="bg-white border-2 border-dashed border-emerald-300 p-4 rounded-2xl flex flex-col items-center text-center animate-in zoom-in-95 shadow-sm">
-                        <QRCodeSVG 
-                          value={`upi://pay?pa=templetrust@sbi&pn=Smart%20Temple%20Trust&am=${donateAmount || '101'}&cu=INR&tn=${encodeURIComponent(donatePurpose || 'Temple Donation')}`} 
-                          size={150} 
-                          level="M" 
-                        />
-                        <div className="mt-2 text-xs font-bold text-gray-700">
-                          Scan with GPay / PhonePe / Paytm / BHIM
-                        </div>
-                        <div className="text-[11px] text-emerald-700 font-black mt-0.5">
-                          Amount: ₹{donateAmount || '101'}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Step 2 Verification: UTR and SS Upload */}
-                    <div className="pt-2 border-t-2 border-dashed border-gray-200 flex flex-col gap-3">
-                      <div className="text-xs font-black text-gray-900 uppercase tracking-wider flex items-center gap-1.5">
-                        <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                        <span>{isHindi ? "भुगतान प्रमाण एवं सत्यापन (Proof of Payment)" : "Payment Proof & Verification"}</span>
-                      </div>
-
-                      {/* UTR Input */}
-                      <div>
-                        <label className="block text-[11px] font-black uppercase text-gray-500 mb-1">
-                          {isHindi ? "UPI रेफरेंस / UTR नंबर (12-अंक)" : "UPI Reference / UTR Number"}
-                        </label>
-                        <input
-                          type="text"
-                          value={donateUtr}
-                          onChange={(e) => setDonateUtr(e.target.value)}
-                          placeholder="e.g. 428912345678 (12-digit ref id)"
-                          maxLength={25}
-                          className="w-full p-2.5 border-2 border-gray-200 rounded-xl bg-white text-sm font-mono font-bold text-gray-800 outline-none focus:border-emerald-500 transition"
-                        />
-                        <span className="text-[10px] text-gray-400 font-medium">UPI भुगतान के बाद मिलने वाला 12-अंक का UTR नंबर दर्ज करें</span>
-                      </div>
-
-                      {/* Screenshot Upload */}
-                      <div>
-                        <label className="block text-[11px] font-black uppercase text-gray-500 mb-1">
-                          {isHindi ? "भुगतान का स्क्रीनशॉट अपलोड करें (SS Upload)" : "Upload Payment Screenshot / Receipt"}
-                        </label>
-
-                        {!donateScreenshot ? (
-                          <label className="border-2 border-dashed border-emerald-300 hover:border-emerald-500 bg-emerald-50/40 hover:bg-emerald-50/80 rounded-xl p-4 flex flex-col items-center justify-center cursor-pointer transition text-center group">
-                            <Upload className="w-6 h-6 text-emerald-600 mb-1 group-hover:scale-110 transition-transform" />
-                            <span className="text-xs font-bold text-emerald-800">
-                              {isHindi ? "स्क्रीनशॉट चुनें या फोटो खींचें" : "Click to Upload Screenshot / Receipt"}
-                            </span>
-                            <span className="text-[10px] text-gray-400 mt-0.5">PNG, JPG, JPEG up to 5MB</span>
-                            <input 
-                              type="file" 
-                              accept="image/*" 
-                              onChange={handleScreenshotUpload}
-                              className="hidden" 
-                            />
-                          </label>
-                        ) : (
-                          <div className="bg-emerald-50/70 border border-emerald-200 rounded-xl p-3 flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                              <img src={donateScreenshot} alt="Payment SS" className="w-12 h-12 object-cover rounded-lg border border-emerald-300 shadow-sm" />
-                              <div>
-                                <div className="text-xs font-bold text-emerald-900 flex items-center gap-1">
-                                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                                  {isHindi ? "स्क्रीनशॉट अटैच हो गया" : "Screenshot Attached"}
-                                </div>
-                                <div className="text-[10px] text-gray-500">Ready for ledger verification</div>
-                              </div>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => setDonateScreenshot(null)}
-                              className="text-xs font-bold text-red-500 hover:text-red-700 px-2 py-1 bg-white rounded-md border border-red-200 transition"
-                            >
-                              {isHindi ? "हटाएं" : "Remove"}
-                            </button>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Back & Submit Proof */}
-                      <div className="grid grid-cols-3 gap-2.5 pt-2">
-                        <button
-                          type="button"
-                          onClick={() => setDonateStep('select')}
-                          className="py-3 px-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl text-xs transition flex items-center justify-center gap-1"
-                        >
-                          <ArrowLeft className="w-3.5 h-3.5" />
-                          <span>{isHindi ? "पीछे" : "Back"}</span>
-                        </button>
-
-                        <button
-                          type="button"
-                          disabled={isSubmittingDonation}
-                          onClick={handleSubmitDonation}
-                          className="col-span-2 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-black rounded-xl text-xs transition shadow-md flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50"
-                        >
-                          {isSubmittingDonation ? (
-                            <>
-                              <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
-                              <span>{isHindi ? "सत्यापित हो रहा है..." : "Verifying..."}</span>
-                            </>
-                          ) : (
-                            <>
-                              <CheckCircle2 className="w-4 h-4" />
-                              <span>{isHindi ? "दान रसीद जमा करें (Submit Proof)" : "Confirm & Submit Proof"}</span>
-                            </>
-                          )}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* STEP 3: Official Digital Daan Receipt */}
-                {donateStep === 'receipt' && (
-                  <div className="flex flex-col gap-4 animate-in zoom-in-95">
-                    <div className="bg-white border-2 border-emerald-500 rounded-2xl p-5 shadow-lg relative overflow-hidden">
-                      <div className="absolute top-0 right-0 bg-emerald-500 text-white text-[10px] font-black px-4 py-1 rounded-bl-lg uppercase tracking-wider flex items-center gap-1">
-                        <CheckCircle2 className="w-3 h-3" /> Verified
-                      </div>
-
-                      <div className="text-center border-b border-dashed border-gray-200 pb-4 mb-4 mt-2">
-                        <div className="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-2 font-bold">
-                          <CheckCircle2 className="w-7 h-7" />
-                        </div>
-                        <h4 className="text-lg font-black text-gray-900">
-                          {isHindi ? "दान रसीद (Official Daan Receipt)" : "Official Temple Daan Receipt"}
-                        </h4>
-                        <div className="text-xs font-mono font-bold text-emerald-700 mt-0.5">
-                          {donateReceiptData?.receipt_id || 'REC-2026-001'}
-                        </div>
-                      </div>
-
-                      <div className="flex flex-col gap-2.5 text-xs">
-                        <div className="flex justify-between items-center py-1 border-b border-gray-100">
-                          <span className="text-gray-400 font-bold uppercase">{isHindi ? "भक्त" : "Devotee"}</span>
-                          <span className="font-black text-gray-800">{donateReceiptData?.user_name || 'Devotee'}</span>
-                        </div>
-                        <div className="flex justify-between items-center py-1 border-b border-gray-100">
-                          <span className="text-gray-400 font-bold uppercase">{isHindi ? "सेवा संकल्प" : "Seva Purpose"}</span>
-                          <span className="font-bold text-gray-700 text-right">{donateReceiptData?.purpose}</span>
-                        </div>
-                        <div className="flex justify-between items-center py-1 border-b border-gray-100">
-                          <span className="text-gray-400 font-bold uppercase">{isHindi ? "दान राशि" : "Amount Paid"}</span>
-                          <span className="font-black text-xl text-emerald-600">₹{donateReceiptData?.amount}</span>
-                        </div>
-                        <div className="flex justify-between items-center py-1 border-b border-gray-100">
-                          <span className="text-gray-400 font-bold uppercase">{isHindi ? "रेफरेंस / UTR" : "UTR / Ref No"}</span>
-                          <span className="font-mono font-bold text-gray-800">{donateReceiptData?.utr_number}</span>
-                        </div>
-                        <div className="flex justify-between items-center py-1">
-                          <span className="text-gray-400 font-bold uppercase">{isHindi ? "दिनांक व समय" : "Date & Time"}</span>
-                          <span className="font-medium text-gray-600">{donateReceiptData?.timestamp}</span>
-                        </div>
-                      </div>
-
-                      {donateScreenshot && (
-                        <div className="mt-3 p-2 bg-emerald-50 rounded-xl border border-emerald-200 text-center text-[10px] font-bold text-emerald-800 flex items-center justify-center gap-1">
-                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                          <span>{isHindi ? "भुगतान स्क्रीनशॉट सत्यापित एवं बहीखाते में संलग्न" : "Payment screenshot verified & recorded in Temple Trust ledger"}</span>
-                        </div>
+                      {isSubmittingSos ? (
+                        <div className="w-6 h-6 border-3 border-white border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <>
+                          <AlertTriangle className="w-6 h-6" />
+                          <span>{isHindi ? "🚨 तत्काल सुरक्षा एवं चिकित्सा SOS भेजें" : "🚨 SEND EMERGENCY SOS NOW"}</span>
+                        </>
                       )}
-
-                      <div className="mt-4 p-3 bg-gray-50 rounded-xl text-center text-[10px] text-gray-500 font-medium">
-                        Smart Temple Trust • Recognized under Section 80G of Income Tax Act
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-4 animate-in zoom-in-95 text-left">
+                    <div className="bg-red-600 text-white p-4 rounded-2xl shadow-lg flex items-center gap-3">
+                      <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center shrink-0">
+                        <CheckCircle2 className="w-8 h-8 text-white" />
+                      </div>
+                      <div>
+                        <div className="text-xs font-bold text-red-200 uppercase tracking-widest">
+                          {isHindi ? "सुरक्षा दल रवाना" : "DISPATCH CONFIRMED"}
+                        </div>
+                        <div className="text-lg font-black leading-tight">
+                          {isHindi ? "आपातकालीन सहायता दल रवाना हो चुका है!" : "Security & Medical Team Dispatched!"}
+                        </div>
                       </div>
                     </div>
 
-                    <div className="flex gap-2.5">
-                      <button
-                        type="button"
-                        onClick={() => window.print()}
-                        className="flex-1 py-3 bg-gray-100 hover:bg-gray-200 text-gray-800 font-bold rounded-xl text-xs transition flex items-center justify-center gap-1.5 active:scale-95 shadow-sm"
-                      >
-                        <FileText className="w-4 h-4" />
-                        <span>{isHindi ? "रसीद प्रिंट / सहेजें" : "Print Receipt"}</span>
-                      </button>
+                    <div className="bg-gray-50 border-2 border-gray-200 rounded-2xl p-4 flex flex-col gap-2.5 text-xs">
+                      <div className="flex justify-between items-center py-1 border-b border-gray-200">
+                        <span className="text-gray-500 font-bold uppercase">{isHindi ? "घटना का प्रकार" : "Emergency Type"}</span>
+                        <span className="font-black text-red-700">{sosResult?.emergency_type || sosType}</span>
+                      </div>
+                      <div className="flex justify-between items-center py-1 border-b border-gray-200">
+                        <span className="text-gray-500 font-bold uppercase">{isHindi ? "निर्धारित ज़ोन" : "Target Zone"}</span>
+                        <span className="font-black text-gray-900">{sosResult?.location || sosZone}</span>
+                      </div>
+                      <div className="flex justify-between items-center py-1 border-b border-gray-200">
+                        <span className="text-gray-500 font-bold uppercase">{isHindi ? "श्रद्धालु" : "Devotee"}</span>
+                        <span className="font-black text-gray-800">{userDashboard?.user?.name || 'Devotee'}</span>
+                      </div>
+                      <div className="flex justify-between items-center py-1">
+                        <span className="text-gray-500 font-bold uppercase">{isHindi ? "अलर्ट समय" : "Alert Timestamp"}</span>
+                        <span className="font-mono font-bold text-gray-700">{sosResult?.timestamp || 'Just now'}</span>
+                      </div>
+                    </div>
 
+                    <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-xs text-blue-900 font-medium leading-relaxed">
+                      💡 {isHindi 
+                        ? "कृपया अपने वर्तमान स्थान पर ही रहें। निकटतम सुरक्षा गार्ड और मेडिकल टीम 60 से 90 सेकंड में आपके पास पहुंच रही है।" 
+                        : "Please remain at your current location. Officers and paramedics will reach you in 60-90 seconds."}
+                    </div>
+
+                    <div className="p-3 bg-gray-100 rounded-xl text-center">
+                      <div className="text-[10px] font-bold text-gray-500 uppercase">{isHindi ? "24/7 मंदिर सुरक्षा हेल्पलाइन" : "24/7 Security Helpline"}</div>
+                      <div className="text-base font-black text-gray-900 font-mono mt-0.5">📞 1800-233-5555 / +91 98765 43210</div>
+                    </div>
+
+                    <div className="flex gap-2">
                       <button
                         type="button"
-                        onClick={handleCloseDonateModal}
-                        className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-black rounded-xl text-xs transition shadow-md active:scale-95"
+                        onClick={() => setSosSent(false)}
+                        className="flex-1 py-3 bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold rounded-xl text-xs transition active:scale-95"
                       >
-                        {isHindi ? "संपन्न (Done)" : "Done"}
+                        {isHindi ? "नया अलर्ट भेजें" : "New Alert"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setActiveServiceModal(null); setSosSent(false); }}
+                        className="flex-1 py-3 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl text-xs transition active:scale-95"
+                      >
+                        {isHindi ? "बंद करें" : "Close"}
                       </button>
                     </div>
                   </div>
                 )}
               </div>
             )}
+
+            {activeServiceModal === 'donate' && (() => {
+              const currentUpiCfg = getTempleUpiConfig(donateTemple);
+              return (
+                <div className="p-6 md:p-8 flex flex-col max-h-[85vh] overflow-y-auto">
+                  {/* Header */}
+                  <div className="flex items-center justify-between border-b border-gray-100 pb-3 mb-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center font-bold">
+                        <Heart className="w-5 h-5 fill-emerald-600" />
+                      </div>
+                      <div>
+                        <h3 className="text-lg md:text-xl font-black text-gray-900 leading-tight">
+                          {isHindi ? "मंदिर दान एवं हुंडी सेवा" : "Temple Daan & E-Hundi"}
+                        </h3>
+                        <p className="text-gray-500 text-[11px]">
+                          {isHindi ? "पवित्र सेवा संकल्प एवं धारा 80G कर छूट रसीद" : "Official Digital Seva & 80G Tax Exemption Receipt"}
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={handleCloseDonateModal}
+                      className="p-1.5 rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+
+                  {/* Step Indicator */}
+                  <div className="grid grid-cols-3 gap-1.5 bg-gray-100 p-1 rounded-xl text-[11px] font-bold mb-4">
+                    <div className={`py-1.5 text-center rounded-lg transition-all ${donateStep === 'select' ? 'bg-white text-emerald-700 shadow-sm font-black' : 'text-gray-400'}`}>
+                      1. {isHindi ? "विवरण व राशि" : "Amount & Temple"}
+                    </div>
+                    <div className={`py-1.5 text-center rounded-lg transition-all ${donateStep === 'pay' ? 'bg-white text-emerald-700 shadow-sm font-black' : 'text-gray-400'}`}>
+                      2. {isHindi ? "UPI भुगतान" : "Pay & Proof"}
+                    </div>
+                    <div className={`py-1.5 text-center rounded-lg transition-all ${donateStep === 'receipt' ? 'bg-white text-emerald-700 shadow-sm font-black' : 'text-gray-400'}`}>
+                      3. {isHindi ? "80G रसीद" : "80G Receipt"}
+                    </div>
+                  </div>
+
+                  {/* STEP 1: Select Temple, Devotee, Purpose, and Amount */}
+                  {donateStep === 'select' && (
+                    <div className="flex flex-col gap-3.5 animate-in fade-in">
+                      {/* Temple Selector */}
+                      <div>
+                        <label className="block text-[11px] font-black uppercase text-gray-400 mb-1">
+                          {isHindi ? "मंदिर न्यास चुनें (Temple Trust)" : "Select Temple Trust"}
+                        </label>
+                        <select
+                          value={donateTemple}
+                          onChange={(e) => setDonateTemple(e.target.value)}
+                          className="w-full p-2.5 border-2 border-gray-100 rounded-xl bg-gray-50 text-sm font-bold text-gray-800 outline-none focus:border-emerald-500 focus:bg-white transition cursor-pointer"
+                        >
+                          <option value="Shri Kashi Vishwanath Temple">Shri Kashi Vishwanath Mandir Trust, Varanasi</option>
+                          <option value="Shree Siddhivinayak Temple">Shree Siddhivinayak Ganapati Temple Trust, Mumbai</option>
+                          <option value="Shree Somnath Jyotirlinga">Shree Somnath Trust, Prabhas Patan</option>
+                          <option value="Mahakaleshwar Jyotirlinga">Shri Mahakaleshwar Temple Committee, Ujjain</option>
+                          <option value="Tirumala Tirupati Devasthanams">Tirumala Tirupati Devasthanams (TTD), Tirupati</option>
+                          <option value="Shri Mata Vaishno Devi Shrine">Shri Mata Vaishno Devi Shrine Board, Katra</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-black uppercase text-gray-400 mb-1">
+                          {isHindi ? "भक्त का नाम" : "Devotee Name"}
+                        </label>
+                        <input 
+                          type="text" 
+                          value={donateDevoteeName} 
+                          onChange={(e) => setDonateDevoteeName(e.target.value)}
+                          placeholder={userDashboard?.user?.name || "Enter your name"}
+                          className="w-full p-2.5 border-2 border-gray-100 rounded-xl bg-gray-50 text-sm font-bold text-gray-800 outline-none focus:border-emerald-500 focus:bg-white transition"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-black uppercase text-gray-400 mb-1">
+                          {isHindi ? "सेवा संकल्प" : "Seva / Purpose"}
+                        </label>
+                        <select 
+                          value={donatePurpose} 
+                          onChange={(e) => setDonatePurpose(e.target.value)}
+                          className="w-full p-2.5 border-2 border-gray-100 rounded-xl bg-gray-50 text-sm font-bold text-gray-800 outline-none focus:border-emerald-500 focus:bg-white transition cursor-pointer"
+                        >
+                          <option value="General Temple Trust Fund">General Temple Trust Fund (सामान्य मंदिर कोष)</option>
+                          <option value="Annadaan Mahaprasad Seva">Annadaan Mahaprasad Seva (अन्नदान महाप्रसाद सेवा)</option>
+                          <option value="Goshala Seva & Cow Care">Goshala Seva - Cow Care (गौशाला सेवा)</option>
+                          <option value="Special Puja & Deepam">Special Puja & Deepam (विशेष पूजा एवं दीप सेवा)</option>
+                          <option value="Mandir Renovation & Vikas">Mandir Renovation & Development (मंदिर विकास)</option>
+                        </select>
+                      </div>
+
+                      {/* Optional PAN Input for 80G */}
+                      <div>
+                        <label className="block text-[11px] font-black uppercase text-gray-400 mb-1">
+                          {isHindi ? "पैन नंबर (धारा 80G कर छूट रसीद हेतु - वैकल्पिक)" : "Devotee PAN (for 80G Tax Exemption - Optional)"}
+                        </label>
+                        <input
+                          type="text"
+                          value={donatePan}
+                          onChange={(e) => setDonatePan(e.target.value.toUpperCase())}
+                          placeholder="e.g. ABCDE1234F"
+                          maxLength={10}
+                          className="w-full p-2.5 border-2 border-gray-100 rounded-xl bg-gray-50 text-sm font-mono font-bold text-gray-800 outline-none focus:border-emerald-500 focus:bg-white transition uppercase tracking-wider"
+                        />
+                      </div>
+
+                      {/* Pre-set Amount Chips */}
+                      <div>
+                        <label className="block text-[11px] font-black uppercase text-gray-400 mb-1">
+                          {isHindi ? "पवित्र दान राशि चुनें (₹)" : "Select Daan Offering (₹)"}
+                        </label>
+                        <div className="grid grid-cols-3 gap-2">
+                          {['51', '101', '251', '501', '1100', '2100'].map(amt => (
+                            <button
+                              key={amt}
+                              type="button"
+                              onClick={() => setDonateAmount(amt)}
+                              className={`py-2 rounded-xl font-black text-sm border-2 transition-all ${donateAmount === amt ? 'border-emerald-500 bg-emerald-50 text-emerald-800 shadow-sm scale-[1.02]' : 'border-gray-100 bg-gray-50 text-gray-700 hover:border-emerald-300'}`}
+                            >
+                              ₹{amt}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Custom Amount Input */}
+                      <div>
+                        <label className="block text-[11px] font-black uppercase text-gray-400 mb-1">
+                          {isHindi ? "या अन्य राशि दर्ज करें (₹)" : "Or Custom Amount (₹)"}
+                        </label>
+                        <div className="relative">
+                          <span className="absolute left-3.5 top-1/2 -translate-y-1/2 font-black text-gray-400 text-sm">₹</span>
+                          <input 
+                            type="number" 
+                            min="1"
+                            placeholder="e.g. 500" 
+                            value={donateAmount} 
+                            onChange={(e) => setDonateAmount(e.target.value)}
+                            className="w-full pl-8 pr-4 py-2.5 border-2 border-gray-100 rounded-xl bg-gray-50 text-base font-black text-gray-900 outline-none focus:border-emerald-500 focus:bg-white transition"
+                          />
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        disabled={!donateAmount || Number(donateAmount) <= 0}
+                        onClick={() => setDonateStep('pay')}
+                        className="w-full mt-2 py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-black rounded-xl shadow-md transition flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50 disabled:pointer-events-none"
+                      >
+                        <span>{isHindi ? `₹${donateAmount || '501'} के UPI भुगतान हेतु आगे बढ़ें` : `Proceed to Pay ₹${donateAmount || '501'} via UPI`}</span>
+                        <ArrowRight className="w-4 h-4" />
+                      </button>
+                    </div>
+                  )}
+
+                  {/* STEP 2: Pay via UPI & Upload Screenshot Proof */}
+                  {donateStep === 'pay' && (
+                    <div className="flex flex-col gap-3.5 animate-in fade-in">
+                      {/* Offering Summary Card */}
+                      <div className="bg-emerald-50 border-2 border-emerald-200 rounded-2xl p-4 flex justify-between items-center shadow-sm">
+                        <div>
+                          <div className="text-[10px] font-black text-emerald-800 uppercase tracking-wider">{donateTemple}</div>
+                          <div className="text-xs text-gray-600 font-bold">{donatePurpose}</div>
+                          <div className="text-sm font-black text-gray-900 mt-0.5">{donateDevoteeName || userDashboard?.user?.name || 'Devotee'}</div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-[10px] font-bold text-gray-500 uppercase">{isHindi ? "राशि" : "Amount"}</div>
+                          <div className="text-2xl font-black text-emerald-700">₹{donateAmount || '501'}</div>
+                        </div>
+                      </div>
+
+                      {/* Direct UPI App Button */}
+                      <a
+                        href={`upi://pay?pa=${currentUpiCfg.upiId}&pn=${encodeURIComponent(currentUpiCfg.trustName)}&am=${donateAmount || '101'}&cu=INR&tn=${encodeURIComponent(donatePurpose || 'Temple Donation')}`}
+                        className="w-full py-3.5 bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-700 hover:to-green-700 text-white font-black text-center rounded-xl shadow-md transition flex items-center justify-center gap-2 active:scale-95"
+                      >
+                        <span>📲 {isHindi ? "UPI ऐप में खोलें (GPay / PhonePe / Paytm)" : "Open in UPI App (GPay / PhonePe / Paytm)"}</span>
+                      </a>
+
+                      {/* Official UPI ID with Copy Button */}
+                      <div className="bg-gray-50 border border-gray-200 rounded-xl p-3 flex items-center justify-between">
+                        <div>
+                          <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{currentUpiCfg.trustName}</div>
+                          <div className="font-mono font-black text-sm text-gray-900">{currentUpiCfg.upiId}</div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={handleCopyUpi}
+                          className="px-3 py-1.5 bg-white border border-gray-300 hover:bg-gray-100 rounded-lg text-xs font-bold text-gray-700 transition flex items-center gap-1 active:scale-95 shadow-sm"
+                        >
+                          {copiedUpi ? (
+                            <>
+                              <Check className="w-3.5 h-3.5 text-emerald-600" />
+                              <span className="text-emerald-700 font-black">Copied!</span>
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="w-3.5 h-3.5 text-gray-500" />
+                              <span>Copy UPI</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+
+                      {/* Show/Hide QR Code Toggle */}
+                      <button
+                        type="button"
+                        onClick={() => setShowUpiQr(!showUpiQr)}
+                        className="w-full py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl text-xs transition flex items-center justify-center gap-1.5"
+                      >
+                        <QrCode className="w-4 h-4 text-gray-600" />
+                        <span>{showUpiQr ? (isHindi ? "QR कोड छुपाएं" : "Hide QR Code") : (isHindi ? "📱 स्कैन करने हेतु UPI QR कोड देखें" : "📱 Show UPI QR Code to Scan")}</span>
+                      </button>
+
+                      {showUpiQr && (
+                        <div className="bg-white border-2 border-dashed border-emerald-300 p-4 rounded-2xl flex flex-col items-center text-center animate-in zoom-in-95 shadow-sm">
+                          <QRCodeSVG 
+                            value={`upi://pay?pa=${currentUpiCfg.upiId}&pn=${encodeURIComponent(currentUpiCfg.trustName)}&am=${donateAmount || '101'}&cu=INR&tn=${encodeURIComponent(donatePurpose || 'Temple Donation')}`} 
+                            size={150} 
+                            level="M" 
+                          />
+                          <div className="mt-2 text-xs font-bold text-gray-700">
+                            Scan with GPay / PhonePe / Paytm / BHIM
+                          </div>
+                          <div className="text-[11px] text-emerald-700 font-black mt-0.5">
+                            Amount: ₹{donateAmount || '101'}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Step 2 Verification: UTR and SS Upload */}
+                      <div className="pt-2 border-t-2 border-dashed border-gray-200 flex flex-col gap-3">
+                        <div className="text-xs font-black text-gray-900 uppercase tracking-wider flex items-center gap-1.5">
+                          <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                          <span>{isHindi ? "भुगतान प्रमाण एवं सत्यापन (Proof of Payment)" : "Payment Proof & Verification"}</span>
+                        </div>
+
+                        {/* UTR Input */}
+                        <div>
+                          <label className="block text-[11px] font-black uppercase text-gray-500 mb-1">
+                            {isHindi ? "UPI रेफरेंस / UTR नंबर (12-अंक)" : "UPI Reference / UTR Number"}
+                          </label>
+                          <input
+                            type="text"
+                            value={donateUtr}
+                            onChange={(e) => setDonateUtr(e.target.value)}
+                            placeholder="e.g. 428912345678 (12-digit ref id)"
+                            maxLength={25}
+                            className="w-full p-2.5 border-2 border-gray-200 rounded-xl bg-white text-sm font-mono font-bold text-gray-800 outline-none focus:border-emerald-500 transition"
+                          />
+                          <span className="text-[10px] text-gray-400 font-medium">UPI भुगतान के बाद मिलने वाला 12-अंक का UTR नंबर दर्ज करें</span>
+                        </div>
+
+                        {/* Screenshot Upload */}
+                        <div>
+                          <label className="block text-[11px] font-black uppercase text-gray-500 mb-1">
+                            {isHindi ? "भुगतान का स्क्रीनशॉट अपलोड करें (SS Upload)" : "Upload Payment Screenshot / Receipt"}
+                          </label>
+
+                          {!donateScreenshot ? (
+                            <label className="border-2 border-dashed border-emerald-300 hover:border-emerald-500 bg-emerald-50/40 hover:bg-emerald-50/80 rounded-xl p-4 flex flex-col items-center justify-center cursor-pointer transition text-center group">
+                              <Upload className="w-6 h-6 text-emerald-600 mb-1 group-hover:scale-110 transition-transform" />
+                              <span className="text-xs font-bold text-emerald-800">
+                                {isHindi ? "स्क्रीनशॉट चुनें या फोटो खींचें" : "Click to Upload Screenshot / Receipt"}
+                              </span>
+                              <span className="text-[10px] text-gray-400 mt-0.5">PNG, JPG, JPEG up to 5MB</span>
+                              <input 
+                                type="file" 
+                                accept="image/*" 
+                                onChange={handleScreenshotUpload}
+                                className="hidden" 
+                              />
+                            </label>
+                          ) : (
+                            <div className="bg-emerald-50/70 border border-emerald-200 rounded-xl p-3 flex items-center justify-between">
+                              <div className="flex items-center gap-3">
+                                <img src={donateScreenshot} alt="Payment SS" className="w-12 h-12 object-cover rounded-lg border border-emerald-300 shadow-sm" />
+                                <div>
+                                  <div className="text-xs font-bold text-emerald-900 flex items-center gap-1">
+                                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                                    {isHindi ? "स्क्रीनशॉट अटैच हो गया" : "Screenshot Attached"}
+                                  </div>
+                                  <div className="text-[10px] text-gray-500">Ready for ledger verification</div>
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => setDonateScreenshot(null)}
+                                className="text-xs font-bold text-red-500 hover:text-red-700 px-2 py-1 bg-white rounded-md border border-red-200 transition"
+                              >
+                                {isHindi ? "हटाएं" : "Remove"}
+                              </button>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Back & Submit Proof */}
+                        <div className="grid grid-cols-3 gap-2.5 pt-2">
+                          <button
+                            type="button"
+                            onClick={() => setDonateStep('select')}
+                            className="py-3 px-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl text-xs transition flex items-center justify-center gap-1"
+                          >
+                            <ArrowLeft className="w-3.5 h-3.5" />
+                            <span>{isHindi ? "पीछे" : "Back"}</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            disabled={isSubmittingDonation}
+                            onClick={handleSubmitDonation}
+                            className="col-span-2 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-black rounded-xl text-xs transition shadow-md flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50"
+                          >
+                            {isSubmittingDonation ? (
+                              <>
+                                <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+                                <span>{isHindi ? "सत्यापित हो रहा है..." : "Verifying..."}</span>
+                              </>
+                            ) : (
+                              <>
+                                <CheckCircle2 className="w-4 h-4" />
+                                <span>{isHindi ? "दान रसीद जमा करें (Submit Proof)" : "Confirm & Submit Proof"}</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* STEP 3: Official Digital Daan Receipt */}
+                  {donateStep === 'receipt' && (
+                    <div className="flex flex-col gap-4 animate-in zoom-in-95">
+                      <div className="bg-white border-2 border-emerald-500 rounded-2xl p-5 shadow-lg relative overflow-hidden">
+                        <div className="absolute top-0 right-0 bg-emerald-500 text-white text-[10px] font-black px-4 py-1 rounded-bl-lg uppercase tracking-wider flex items-center gap-1">
+                          <CheckCircle2 className="w-3 h-3" /> Verified & Recorded
+                        </div>
+
+                        <div className="text-center border-b border-dashed border-gray-200 pb-4 mb-4 mt-2">
+                          <div className="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-2 font-bold">
+                            <CheckCircle2 className="w-7 h-7" />
+                          </div>
+                          <div className="text-[10px] uppercase font-black tracking-widest text-emerald-800">
+                            {donateReceiptData?.temple_name || donateTemple}
+                          </div>
+                          <h4 className="text-lg font-black text-gray-900">
+                            {isHindi ? "आधिकारिक दान रसीद (Official Daan Receipt)" : "Official Temple Daan Receipt"}
+                          </h4>
+                          <div className="text-xs font-mono font-bold text-emerald-700 mt-0.5">
+                            {donateReceiptData?.receipt_id || 'REC-2026-001'}
+                          </div>
+                        </div>
+
+                        <div className="flex flex-col gap-2 text-xs">
+                          <div className="flex justify-between items-center py-1 border-b border-gray-100">
+                            <span className="text-gray-400 font-bold uppercase">{isHindi ? "मंदिर न्यास" : "Temple Trust"}</span>
+                            <span className="font-black text-gray-800 text-right">{donateReceiptData?.temple_name || donateTemple}</span>
+                          </div>
+                          <div className="flex justify-between items-center py-1 border-b border-gray-100">
+                            <span className="text-gray-400 font-bold uppercase">{isHindi ? "भक्त का नाम" : "Devotee"}</span>
+                            <span className="font-black text-gray-800">{donateReceiptData?.user_name || 'Devotee'}</span>
+                          </div>
+                          {donateReceiptData?.pan_number && donateReceiptData.pan_number !== 'N/A' && (
+                            <div className="flex justify-between items-center py-1 border-b border-gray-100">
+                              <span className="text-gray-400 font-bold uppercase">PAN (80G Tax Credit)</span>
+                              <span className="font-mono font-bold text-gray-900">{donateReceiptData.pan_number}</span>
+                            </div>
+                          )}
+                          <div className="flex justify-between items-center py-1 border-b border-gray-100">
+                            <span className="text-gray-400 font-bold uppercase">{isHindi ? "सेवा संकल्प" : "Seva Purpose"}</span>
+                            <span className="font-bold text-gray-700 text-right">{donateReceiptData?.purpose}</span>
+                          </div>
+                          <div className="flex justify-between items-center py-1 border-b border-gray-100">
+                            <span className="text-gray-400 font-bold uppercase">{isHindi ? "दान राशि" : "Amount Paid"}</span>
+                            <span className="font-black text-xl text-emerald-600">₹{donateReceiptData?.amount}</span>
+                          </div>
+                          <div className="flex justify-between items-center py-1 border-b border-gray-100">
+                            <span className="text-gray-400 font-bold uppercase">{isHindi ? "रेफरेंस / UTR" : "UTR / Ref No"}</span>
+                            <span className="font-mono font-bold text-gray-800">{donateReceiptData?.utr_number}</span>
+                          </div>
+                          <div className="flex justify-between items-center py-1">
+                            <span className="text-gray-400 font-bold uppercase">{isHindi ? "दिनांक व समय" : "Date & Time"}</span>
+                            <span className="font-medium text-gray-600">{donateReceiptData?.timestamp}</span>
+                          </div>
+                        </div>
+
+                        {donateScreenshot && (
+                          <div className="mt-3 p-2 bg-emerald-50 rounded-xl border border-emerald-200 text-center text-[10px] font-bold text-emerald-800 flex items-center justify-center gap-1">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                            <span>{isHindi ? "भुगतान स्क्रीनशॉट सत्यापित एवं बहीखाते में संलग्न" : "Payment screenshot verified & recorded in Temple Trust ledger"}</span>
+                          </div>
+                        )}
+
+                        <div className="mt-4 p-3 bg-gray-50 rounded-xl text-center text-[10px] text-gray-500 font-medium">
+                          Recognized under Section 80G(5) of Income Tax Act 1961 • Registration No: AAATT0144RE20214
+                        </div>
+                      </div>
+
+                      <div className="flex gap-2.5">
+                        <button
+                          type="button"
+                          onClick={() => window.print()}
+                          className="flex-1 py-3 bg-gray-100 hover:bg-gray-200 text-gray-800 font-bold rounded-xl text-xs transition flex items-center justify-center gap-1.5 active:scale-95 shadow-sm"
+                        >
+                          <FileText className="w-4 h-4" />
+                          <span>{isHindi ? "रसीद प्रिंट / सहेजें" : "Print 80G Receipt"}</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={handleCloseDonateModal}
+                          className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-black rounded-xl text-xs transition shadow-md active:scale-95"
+                        >
+                          {isHindi ? "संपन्न (Done)" : "Done"}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
 
             {activeServiceModal === 'parking' && (() => {
               const activeZone = parkingData?.zones?.[parkingZone] || {
@@ -2504,32 +3215,205 @@ function App() {
             })()}
 
             {activeServiceModal === 'lostfound' && (
-              <div className="p-8 flex flex-col h-[500px]">
-                <h3 className="text-2xl font-black text-gray-900 mb-1">AI Lost & Found</h3>
-                <p className="text-gray-500 mb-6 text-xs font-medium">CCTV cameras will actively scan for reported children.</p>
-                
-                <div className="bg-gray-50 p-4 rounded-xl mb-4 border-2 border-gray-100">
-                  <div className="flex gap-2 mb-3">
-                    <select value={lfType} onChange={(e)=>setLfType(e.target.value)} className="p-2 border border-gray-200 bg-white rounded-lg outline-none text-sm font-bold"><option value="child">Lost Child</option><option value="item">Lost Item</option></select>
-                    <input value={lfDesc} onChange={(e)=>setLfDesc(e.target.value)} placeholder="E.g. Red shirt..." className="flex-1 p-2 border border-gray-200 rounded-lg outline-none text-sm font-medium" />
+              <div className="p-6 md:p-8 flex flex-col max-h-[85vh] overflow-y-auto">
+                <div className="flex items-center justify-between border-b border-gray-100 pb-3 mb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-purple-100 text-purple-600 rounded-full flex items-center justify-center font-bold">
+                      <Search className="w-5 h-5 text-purple-600" />
+                    </div>
+                    <div>
+                      <h3 className="text-lg md:text-xl font-black text-gray-900 leading-tight">
+                        {isHindi ? "AI खोया-पाया एवं परिजन खोज सेवा" : "AI Lost & Found / Missing Help"}
+                      </h3>
+                      <p className="text-gray-500 text-[11px] font-medium">
+                        {isHindi ? "CCTV स्मार्ट ट्रैकिंग एवं परिसर सुरक्षा लाउडस्पीकर प्रसारण" : "CCTV facial & object recognition tracking across temple zones"}
+                      </p>
+                    </div>
                   </div>
-                  <button onClick={async () => {
-                      if (!lfDesc) return;
-                      try { await axios.post(`${API_URL}/services/lostfound`, {item_type: lfType, desc: lfDesc}); setLfDesc(''); fetchServices(); } catch(e) {}
-                  }} className="w-full py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-black text-sm tracking-wide shadow-sm active:scale-95 transition">Report Missing</button>
                 </div>
 
-                <h4 className="font-black text-xs text-gray-400 uppercase tracking-widest mb-3">Live AI Search Feed</h4>
-                <div className="flex-1 overflow-y-auto pr-2 flex flex-col gap-2">
-                  {lostFoundData.map((lf, i) => (
-                    <div key={i} className="p-4 border-2 border-gray-100 rounded-xl flex justify-between items-center bg-white shadow-sm">
-                      <div>
-                        <div className="font-bold text-sm text-gray-900">{lf.desc}</div>
-                        <div className="text-[10px] text-gray-400 uppercase tracking-widest font-bold mt-1">{lf.type}</div>
-                      </div>
-                      <div className={`text-[10px] font-black uppercase px-2 py-1 rounded-md tracking-wider ${lf.status === 'found' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700 animate-pulse'}`}>{lf.status}</div>
+                {/* Report Form */}
+                <div className="bg-purple-50/60 p-4 rounded-2xl border-2 border-purple-100 mb-5 shadow-sm">
+                  <div className="text-xs font-black text-purple-950 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                    <ShieldCheck className="w-4 h-4 text-purple-600" />
+                    <span>{isHindi ? "लापता व्यक्ति या खोया सामान रिपोर्ट करें" : "Report Missing Person or Item"}</span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 mb-2.5">
+                    <div>
+                      <label className="block text-[10px] font-black uppercase text-gray-500 mb-1">
+                        {isHindi ? "श्रेणी (Category)" : "Category"}
+                      </label>
+                      <select 
+                        value={lfType} 
+                        onChange={(e) => setLfType(e.target.value)} 
+                        className="w-full p-2 border border-gray-200 bg-white rounded-xl text-xs font-bold text-gray-800 outline-none focus:border-purple-500 transition cursor-pointer"
+                      >
+                        <option value="Lost Child">👶 Lost Child (गुमशुदा बालक / बालिका)</option>
+                        <option value="Missing Elder">🧓 Missing Elder / Family Member (परिजन)</option>
+                        <option value="Smartphone / Mobile">📱 Mobile / Smartphone (स्मार्टफोन)</option>
+                        <option value="Wallet / Purse">👛 Wallet / Purse / Aadhaar (पर्स / बटुआ)</option>
+                        <option value="Bag / Luggage">🎒 Bag / Backpack (बैग / सामान)</option>
+                        <option value="Jewellery / Valuables">💍 Jewellery / Gold (आभूषण)</option>
+                      </select>
                     </div>
-                  ))}
+
+                    <div>
+                      <label className="block text-[10px] font-black uppercase text-gray-500 mb-1">
+                        {isHindi ? "अंतिम बार देखा गया स्थान" : "Last Seen Zone"}
+                      </label>
+                      <select 
+                        value={lfLocation} 
+                        onChange={(e) => setLfLocation(e.target.value)} 
+                        className="w-full p-2 border border-gray-200 bg-white rounded-xl text-xs font-bold text-gray-800 outline-none focus:border-purple-500 transition cursor-pointer"
+                      >
+                        <option value="Main Corridor / Queue">Main Darshan Corridor (मुख्य दर्शन कतार)</option>
+                        <option value="Sanctum Sanctorum (Garbhagriha)">Sanctum Sanctorum (गर्भगृह क्षेत्र)</option>
+                        <option value="North Entry Gate">North Entry Gate & Security (उत्तर प्रवेश द्वार)</option>
+                        <option value="Parking Ground Area">Vehicle Parking Ground (पार्किंग ज़ोन)</option>
+                        <option value="Footwear / Shoe Stand">Footwear Stand (जूता स्टैंड)</option>
+                        <option value="Prasadam Hall">Annakshetra & Dining Hall (अन्नक्षेत्र)</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="mb-2.5">
+                    <label className="block text-[10px] font-black uppercase text-gray-500 mb-1">
+                      {isHindi ? "पहचान विवरण (कपड़े, रंग, पहचान चिह्न)" : "Visual Description (Clothing, Color, Identifying Marks)"}
+                    </label>
+                    <input 
+                      value={lfDesc} 
+                      onChange={(e) => setLfDesc(e.target.value)} 
+                      placeholder={isHindi ? "उदा. 6 साल का बालक, पीला कुर्ता, नीली जींस..." : "e.g. 6-yr-old boy, yellow kurta, blue jeans..."} 
+                      className="w-full p-2.5 border border-gray-200 bg-white rounded-xl text-xs font-bold text-gray-800 outline-none focus:border-purple-500 transition" 
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 mb-3">
+                    <div>
+                      <label className="block text-[10px] font-black uppercase text-gray-500 mb-1">
+                        {isHindi ? "अभिभावक / संपर्क व्यक्ति का नाम" : "Contact Person / Guardian"}
+                      </label>
+                      <input 
+                        value={lfContactName} 
+                        onChange={(e) => setLfContactName(e.target.value)} 
+                        placeholder={userDashboard?.user?.name || "Enter guardian name"} 
+                        className="w-full p-2 border border-gray-200 bg-white rounded-xl text-xs font-bold text-gray-800 outline-none focus:border-purple-500 transition" 
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-black uppercase text-gray-500 mb-1">
+                        {isHindi ? "संपर्क मोबाइल नंबर" : "Contact Mobile"}
+                      </label>
+                      <input 
+                        type="tel"
+                        value={lfContactPhone} 
+                        onChange={(e) => setLfContactPhone(e.target.value)} 
+                        placeholder="e.g. 9876543210" 
+                        className="w-full p-2 border border-gray-200 bg-white rounded-xl text-xs font-bold text-gray-800 outline-none focus:border-purple-500 transition" 
+                      />
+                    </div>
+                  </div>
+
+                  <button 
+                    type="button"
+                    disabled={isSubmittingLf || !lfDesc.trim()} 
+                    onClick={async () => {
+                      if (!lfDesc.trim()) return;
+                      setIsSubmittingLf(true);
+                      try {
+                        await axios.post(`${API_URL}/services/lostfound`, {
+                          item_type: lfType,
+                          desc: lfDesc.trim(),
+                          location: lfLocation,
+                          contact_name: lfContactName.trim() || userDashboard?.user?.name || 'Devotee Guardian',
+                          contact_phone: lfContactPhone.trim() || 'N/A'
+                        });
+                        setLfDesc('');
+                        fetchServices();
+                      } catch(e) {
+                        console.error(e);
+                      } finally {
+                        setIsSubmittingLf(false);
+                      }
+                    }} 
+                    className="w-full py-3 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white rounded-xl font-black text-xs tracking-wide shadow-md active:scale-95 transition flex items-center justify-center gap-2"
+                  >
+                    {isSubmittingLf ? (
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    ) : (
+                      <>
+                        <Search className="w-4 h-4" />
+                        <span>{isHindi ? "रिपोर्ट दर्ज करें एवं AI ट्रैकिंग शुरू करें" : "Broadcast Report & Activate AI Search"}</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                {/* Live Feed Header */}
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="font-black text-xs text-gray-500 uppercase tracking-widest flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                    <span>{isHindi ? "लाइव खोज एवं पुनःमिलन फीड" : "Live AI Search & Reunited Feed"}</span>
+                  </h4>
+                  <span className="text-[10px] font-bold text-gray-400">
+                    {lostFoundData.length} {isHindi ? "रिकॉर्ड्स" : "cases"}
+                  </span>
+                </div>
+
+                {/* Feed Cards List */}
+                <div className="flex-1 overflow-y-auto pr-1 flex flex-col gap-2.5 max-h-[280px]">
+                  {lostFoundData.length === 0 ? (
+                    <div className="p-8 text-center text-gray-400 border border-dashed border-gray-200 rounded-2xl bg-gray-50 text-xs">
+                      {isHindi ? "वर्तमान में कोई खोया-पाया मामला दर्ज नहीं है।" : "No missing person or item cases reported."}
+                    </div>
+                  ) : (
+                    lostFoundData.map((lf: any, i: number) => {
+                      const isFound = lf.status === 'found';
+                      return (
+                        <div key={lf.id || i} className={`p-3.5 border-2 rounded-2xl flex flex-col gap-2 shadow-sm transition-all ${isFound ? 'bg-emerald-50/50 border-emerald-200' : 'bg-white border-gray-100 hover:border-purple-200'}`}>
+                          <div className="flex justify-between items-start gap-2">
+                            <div>
+                              <div className="font-black text-sm text-gray-900 leading-snug">{lf.desc}</div>
+                              <div className="text-[10px] text-gray-500 font-bold flex items-center gap-2 mt-0.5">
+                                <span className="bg-purple-100 text-purple-800 px-1.5 py-0.5 rounded uppercase font-black tracking-wider text-[9px]">{lf.type}</span>
+                                <span>📍 {lf.location || 'Sanctum Corridor'}</span>
+                                {lf.timestamp && <span>• 🕒 {lf.timestamp}</span>}
+                              </div>
+                            </div>
+                            <span className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-full tracking-wider flex items-center gap-1 shrink-0 ${isFound ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' : 'bg-orange-100 text-orange-800 border border-orange-300 animate-pulse'}`}>
+                              {isFound ? (
+                                <>
+                                  <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                  <span>{isHindi ? "पुनःमिलन संपन्न" : "REUNITED"}</span>
+                                </>
+                              ) : (
+                                <>
+                                  <span className="w-1.5 h-1.5 rounded-full bg-orange-500"></span>
+                                  <span>{isHindi ? "खोज जारी" : "SEARCHING"}</span>
+                                </>
+                              )}
+                            </span>
+                          </div>
+
+                          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center pt-2 border-t border-gray-100 text-[11px] gap-2">
+                            <div className="text-gray-600 font-medium">
+                              👤 {lf.contact_name || 'Guardian'}: <span className="font-bold text-gray-900">{lf.contact_phone || 'N/A'}</span>
+                            </div>
+                            {!isFound && lf.id && (
+                              <button
+                                type="button"
+                                onClick={() => handleResolveLostFound(lf.id)}
+                                className="py-1 px-3 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-[10px] rounded-lg transition shadow-sm active:scale-95"
+                              >
+                                {isHindi ? "✓ ढूंढ लिया गया (Mark Found)" : "✓ Mark Reunited / Found"}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
                 </div>
               </div>
             )}

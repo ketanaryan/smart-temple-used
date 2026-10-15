@@ -19,6 +19,7 @@ app.add_middleware(
 try:
     from fastapi import Depends, HTTPException, status, WebSocket, WebSocketDisconnect, BackgroundTasks
     from typing import List, Optional
+    from pydantic import BaseModel
     from sqlalchemy.orm import Session
     from datetime import datetime, date, time, timedelta, timezone
     import models, schemas
@@ -245,7 +246,11 @@ try:
 
     @app.post("/bookings/", response_model=schemas.Booking)
     def create_booking(booking: schemas.BookingCreate, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
-        slot = db.query(models.TimeSlot).filter(models.TimeSlot.id == booking.slot_id).first()
+        try:
+            slot = db.query(models.TimeSlot).filter(models.TimeSlot.id == booking.slot_id).with_for_update().first()
+        except Exception:
+            slot = db.query(models.TimeSlot).filter(models.TimeSlot.id == booking.slot_id).first()
+
         if not slot:
             raise HTTPException(status_code=404, detail="Slot not found")
         if slot.availability <= 0:
@@ -313,23 +318,6 @@ try:
             risk_level = "NORMAL"
             prediction_text = "Steady crowd flow expected over the next 30 minutes."
             recommended_action = "Maintain current operations. Open all standard gates."
-            
-        # Feature: Dynamic Time-Slot Capacity Auto-Adjust
-        now = get_ist_now()
-        current_time = now.time()
-        today = now.date()
-        upcoming_slots = db.query(models.TimeSlot).filter(
-            models.TimeSlot.temple_id == temple_id,
-            models.TimeSlot.date == today,
-            models.TimeSlot.start_time >= current_time
-        ).all()
-        
-        # Dynamically set capacities to prevent future crowding
-        for slot in upcoming_slots:
-            if risk_level == "CRITICAL": slot.max_capacity = 25
-            elif risk_level == "WARNING": slot.max_capacity = 40
-            elif risk_level == "NORMAL": slot.max_capacity = 60
-        db.commit()
 
         env_data = {
             1: {"temp": "28.5AC", "aqi": 112, "aqi_status": "MODERATE", "cap": "76%", "sec": "SECURE"},
@@ -489,6 +477,50 @@ def get_ticket(token_number: str, db: Session = Depends(get_db)):
         'user_name': user.name if user else 'Walk-in Devotee'
     }
 
+class GateVerifyRequest(BaseModel):
+    token: str
+
+@app.post("/gate/verify-token")
+def verify_gate_token(req: GateVerifyRequest, db: Session = Depends(get_db)):
+    clean_token = req.token.strip().upper()
+    booking = db.query(models.Booking).filter(models.Booking.token_number == clean_token).first()
+    if not booking:
+        raise HTTPException(status_code=404, detail=f"Token '{clean_token}' not found. Invalid entry pass.")
+
+    slot = db.query(models.TimeSlot).filter(models.TimeSlot.id == booking.slot_id).first()
+    temple = db.query(models.Temple).filter(models.Temple.id == slot.temple_id).first() if slot else None
+    user = db.query(models.User).filter(models.User.id == booking.user_id).first() if booking.user_id else None
+
+    # Check if already visited / used (Prevent Replay Attack)
+    if booking.status in ["VISITED", "SERVED", "COMPLETED"]:
+        return {
+            "success": False,
+            "status": "REPLAY_DETECTED",
+            "message": f"⚠️ REPLAY DETECTED! Pass '{clean_token}' has ALREADY been used for entry. Entry Denied.",
+            "token": clean_token,
+            "devotee_name": user.name if user else "Devotee",
+            "temple_name": temple.name if temple else "Temple",
+            "slot_date": str(slot.date) if slot else "",
+            "slot_time": f"{str(slot.start_time)[:5]} - {str(slot.end_time)[:5]}" if slot else "",
+            "is_duplicate": True
+        }
+
+    # Grant entry and mark VISITED atomically
+    booking.status = "VISITED"
+    db.commit()
+
+    return {
+        "success": True,
+        "status": "ENTRY_GRANTED",
+        "message": f"✅ ENTRY GRANTED! Token verified for {temple.name if temple else 'Temple'}.",
+        "token": clean_token,
+        "devotee_name": user.name if user else "Devotee",
+        "temple_name": temple.name if temple else "Temple",
+        "slot_date": str(slot.date) if slot else "",
+        "slot_time": f"{str(slot.start_time)[:5]} - {str(slot.end_time)[:5]}" if slot else "",
+        "is_duplicate": False
+    }
+
 @app.get('/admin/codes', response_model=List[schemas.TempleCodeResponse])
 def get_temple_codes(db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
     if current_user.email != 'mainadmin@smarttemple.com':
@@ -506,7 +538,9 @@ def get_temple_codes(db: Session = Depends(get_db), current_user: models.User = 
     return results
 
 @app.get('/admin/temples/{temple_id}/bookings')
-def get_temple_bookings(temple_id: int, db: Session = Depends(get_db)):
+def get_temple_bookings(temple_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    if not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Admin authorization required to view temple bookings")
     bookings = db.query(models.Booking).join(models.TimeSlot).filter(
         models.TimeSlot.temple_id == temple_id
     ).order_by(models.Booking.booking_time.desc()).limit(50).all()
@@ -565,6 +599,8 @@ from pydantic import BaseModel
 class SOSRequest(BaseModel):
     user_name: str
     location: str
+    emergency_type: Optional[str] = "Medical Assistance"
+    contact_phone: Optional[str] = None
 
 class ParkingBookingRequest(BaseModel):
     vehicle_type: Optional[str] = "4-Wheeler"
@@ -574,21 +610,42 @@ class ParkingBookingRequest(BaseModel):
     zone_id: Optional[str] = "A"
     slot_name: Optional[str] = None
 
+class ParkingVacateRequest(BaseModel):
+    zone_id: str
+    slot_name: str
+
 class DonationRequest(BaseModel):
     user_name: str
     amount: int
     purpose: Optional[str] = "General Temple Trust Fund"
+    temple_name: Optional[str] = "Shri Kashi Vishwanath Temple"
     utr_number: Optional[str] = None
+    pan_number: Optional[str] = None
     receipt_image: Optional[str] = None
 
 class LostFoundRequest(BaseModel):
     item_type: str
     desc: str
+    location: Optional[str] = "Main Corridor"
+    contact_name: Optional[str] = None
+    contact_phone: Optional[str] = None
 
 @app.post("/services/sos")
 def trigger_sos(req: SOSRequest):
-    global_sos_alerts.append(req.dict())
-    return {"message": "SOS Alert Sent to Security"}
+    alert_record = {
+        "id": len(global_sos_alerts) + 1,
+        "user_name": req.user_name,
+        "location": req.location,
+        "emergency_type": req.emergency_type or "General Emergency",
+        "contact_phone": req.contact_phone or "N/A",
+        "timestamp": datetime.now().strftime("%d %b %Y, %I:%M:%S %p"),
+        "status": "DISPATCHED"
+    }
+    global_sos_alerts.insert(0, alert_record)
+    return {
+        "message": f"SOS Alert ({alert_record['emergency_type']}) Dispatched to Security at {alert_record['location']}",
+        "alert": alert_record
+    }
 
 @app.get("/services/sos")
 def get_sos():
@@ -665,6 +722,27 @@ def book_parking(req: Optional[ParkingBookingRequest] = None):
         "zones": global_parking_zones
     }
 
+@app.post("/services/parking/vacate")
+def vacate_parking_slot(req: ParkingVacateRequest):
+    zone_id = req.zone_id.upper()
+    if zone_id not in global_parking_zones:
+        raise HTTPException(status_code=400, detail=f"Invalid parking zone: {zone_id}")
+    zone = global_parking_zones[zone_id]
+    clean_slot = req.slot_name.strip().upper()
+    if clean_slot in zone["occupied_slots"]:
+        zone["occupied_slots"].remove(clean_slot)
+    
+    total_slots = sum(z["total"] for z in global_parking_zones.values())
+    booked_slots = sum(len(z["occupied_slots"]) for z in global_parking_zones.values())
+    return {
+        "success": True,
+        "message": f"Slot {clean_slot} is now vacated and available (Green).",
+        "total": total_slots,
+        "booked": booked_slots,
+        "available": total_slots - booked_slots,
+        "zones": global_parking_zones
+    }
+
 @app.post("/services/donate")
 def make_donation(req: DonationRequest):
     receipt_id = f"REC-{datetime.now().strftime('%Y%m%d')}-{uuid.uuid4().hex[:6].upper()}"
@@ -672,17 +750,23 @@ def make_donation(req: DonationRequest):
         "receipt_id": receipt_id,
         "user_name": req.user_name,
         "amount": req.amount,
+        "temple_name": req.temple_name or "Shri Kashi Vishwanath Temple",
         "purpose": req.purpose or "General Temple Trust Fund",
         "utr_number": req.utr_number or f"UPI-{uuid.uuid4().hex[:8].upper()}",
+        "pan_number": req.pan_number or "N/A",
         "has_screenshot": True if req.receipt_image else False,
         "timestamp": datetime.now().strftime("%d %b %Y, %I:%M %p"),
         "status": "VERIFIED"
     }
-    global_donations.append(donation_record)
+    global_donations.insert(0, donation_record)
     return {
         "message": "Donation verified and recorded successfully in Temple Ledger",
         "receipt": donation_record
     }
+
+@app.get("/services/donations")
+def get_donations():
+    return global_donations
 
 @app.get("/services/lostfound")
 def get_lostfound():
@@ -690,8 +774,25 @@ def get_lostfound():
 
 @app.post("/services/lostfound")
 def report_lostfound(req: LostFoundRequest):
-    new_item = {"id": len(global_lost_found) + 1, "type": req.item_type, "desc": req.desc, "status": "searching"}
+    new_item = {
+        "id": len(global_lost_found) + 1,
+        "type": req.item_type,
+        "desc": req.desc,
+        "location": req.location or "Sanctum Corridor",
+        "contact_name": req.contact_name or "Devotee Guardian",
+        "contact_phone": req.contact_phone or "N/A",
+        "timestamp": datetime.now().strftime("%d %b, %I:%M %p"),
+        "status": "searching"
+    }
     global_lost_found.insert(0, new_item)
     return new_item
+
+@app.post("/services/lostfound/{item_id}/resolve")
+def resolve_lostfound(item_id: int):
+    for item in global_lost_found:
+        if item.get("id") == item_id:
+            item["status"] = "found"
+            return {"success": True, "message": "Marked as REUNITED / FOUND", "item": item}
+    raise HTTPException(status_code=404, detail="Item not found")
 # ------------------------------------
 
