@@ -184,6 +184,7 @@ function App() {
   const [lfLocation, setLfLocation] = useState('Main Corridor / Queue');
   const [lfContactName, setLfContactName] = useState('');
   const [lfContactPhone, setLfContactPhone] = useState('');
+  const [lfPhoto, setLfPhoto] = useState<string | null>(null);
   const [isSubmittingLf, setIsSubmittingLf] = useState(false);
 
   const handleSelectParkingZone = (zoneId: 'A' | 'B' | 'C') => {
@@ -2416,7 +2417,7 @@ function App() {
                 >
                   <option value="" disabled>-- Choose Temple --</option>
                   {temples.map((t) => (
-                    <option key={t.id} value={t.id}>{t.name}, {t.city}</option>
+                    <option key={t.id} value={t.id}>{t.name}, {normalizeCity(t.city)}</option>
                   ))}
                 </select>
               </div>
@@ -2970,7 +2971,7 @@ function App() {
                   <select id="newTempleCode" className="p-3 border border-blue-200 rounded-lg flex-1 outline-none focus:border-blue-500 bg-white" defaultValue="">
                     <option value="" disabled>-- Select Temple to Assign --</option>
                     {temples.map((t) => (
-                      <option key={t.id} value={t.id}>{t.name}, {t.city}</option>
+                      <option key={t.id} value={t.id}>{t.name}, {normalizeCity(t.city)}</option>
                     ))}
                   </select>
                   <button onClick={async () => {
@@ -3046,7 +3047,7 @@ function App() {
                     className="w-full p-4 border-2 border-gray-200 rounded-xl bg-gray-50 text-gray-800 font-bold text-lg focus:border-orange-500 outline-none transition-colors"
                   >
                     {(userDashboard?.user?.email === 'mainadmin@smarttemple.com' ? temples : (userDashboard?.user?.managed_temples || [])).map((t: any) => (
-                      <option key={t.id} value={t.id}>{t.name}, {t.city}</option>
+                      <option key={t.id} value={t.id}>{t.name}, {normalizeCity(t.city)}</option>
                     ))}
                   </select>
                 </div>
@@ -3590,7 +3591,7 @@ function App() {
                           {temples && temples.length > 0 ? (
                             temples.map((t: any) => (
                               <option key={t.id} value={t.name}>
-                                {t.name} ({t.city})
+                                {t.name} ({normalizeCity(t.city)})
                               </option>
                             ))
                           ) : (
@@ -4526,7 +4527,7 @@ function App() {
                     />
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 mb-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 mb-2.5">
                     <div>
                       <label className="block text-[10px] font-black uppercase text-gray-500 mb-1">
                         {isHindi ? "अभिभावक / संपर्क व्यक्ति का नाम" : "Contact Person / Guardian"}
@@ -4552,6 +4553,48 @@ function App() {
                     </div>
                   </div>
 
+                  {/* Reference Photo Upload for AI & Security matching */}
+                  <div className="mb-3">
+                    <label className="block text-[10px] font-black uppercase text-gray-500 mb-1 flex items-center justify-between">
+                      <span>{isHindi ? "पहचान / संदर्भ तस्वीर (Reference Photo for AI Matching)" : "Reference Photo (for AI Facial & Object Search)"}</span>
+                      {lfPhoto && (
+                        <button 
+                          type="button" 
+                          onClick={() => setLfPhoto(null)} 
+                          className="text-[10px] text-red-500 font-bold hover:underline"
+                        >
+                          {isHindi ? "फोटो हटाएं" : "Remove"}
+                        </button>
+                      )}
+                    </label>
+                    {lfPhoto ? (
+                      <div className="flex items-center gap-3 p-2 bg-purple-50 border border-purple-200 rounded-xl">
+                        <img src={lfPhoto} alt="Ref" className="w-12 h-12 rounded-lg object-cover border border-purple-300 shadow-sm" />
+                        <div className="text-xs text-purple-900 font-bold">
+                          {isHindi ? "तस्वीर संलग्न है (AI सर्च सक्रिय)" : "Photo Attached (Ready for AI CCTV Search)"}
+                        </div>
+                      </div>
+                    ) : (
+                      <label className="flex items-center justify-center gap-2 p-2.5 border-2 border-dashed border-gray-200 hover:border-purple-400 bg-gray-50 hover:bg-purple-50/50 rounded-xl cursor-pointer transition text-xs font-bold text-gray-600">
+                        <Upload className="w-4 h-4 text-purple-600" />
+                        <span>{isHindi ? "तस्वीर अपलोड करें (बच्चे या सामान की फोटो)" : "Upload Photo (Child or Missing Bag/Item)"}</span>
+                        <input 
+                          type="file" 
+                          accept="image/*" 
+                          className="hidden" 
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              const reader = new FileReader();
+                              reader.onloadend = () => setLfPhoto(reader.result as string);
+                              reader.readAsDataURL(file);
+                            }
+                          }}
+                        />
+                      </label>
+                    )}
+                  </div>
+
                   <button 
                     type="button"
                     disabled={isSubmittingLf || !lfDesc.trim()} 
@@ -4564,9 +4607,11 @@ function App() {
                           desc: lfDesc.trim(),
                           location: lfLocation,
                           contact_name: lfContactName.trim() || userDashboard?.user?.name || 'Devotee Guardian',
-                          contact_phone: lfContactPhone.trim() || 'N/A'
+                          contact_phone: lfContactPhone.trim() || 'N/A',
+                          photo: lfPhoto
                         });
                         setLfDesc('');
+                        setLfPhoto(null);
                         fetchServices();
                       } catch(e) {
                         console.error(e);
@@ -4610,12 +4655,17 @@ function App() {
                       return (
                         <div key={lf.id || i} className={`p-3.5 border-2 rounded-2xl flex flex-col gap-2 shadow-sm transition-all ${isFound ? 'bg-emerald-50/50 border-emerald-200' : 'bg-white border-gray-100 hover:border-purple-200'}`}>
                           <div className="flex justify-between items-start gap-2">
-                            <div>
-                              <div className="font-black text-sm text-gray-900 leading-snug">{lf.desc}</div>
-                              <div className="text-[10px] text-gray-500 font-bold flex items-center gap-2 mt-0.5">
-                                <span className="bg-purple-100 text-purple-800 px-1.5 py-0.5 rounded uppercase font-black tracking-wider text-[9px]">{lf.type}</span>
-                                <span>📍 {lf.location || 'Sanctum Corridor'}</span>
-                                {lf.timestamp && <span>• 🕒 {lf.timestamp}</span>}
+                            <div className="flex items-start gap-3">
+                              {lf.photo && (
+                                <img src={lf.photo} alt="Ref" className="w-12 h-12 rounded-xl object-cover border border-purple-200 shadow-sm shrink-0" />
+                              )}
+                              <div>
+                                <div className="font-black text-sm text-gray-900 leading-snug">{lf.desc}</div>
+                                <div className="text-[10px] text-gray-500 font-bold flex flex-wrap items-center gap-2 mt-0.5">
+                                  <span className="bg-purple-100 text-purple-800 px-1.5 py-0.5 rounded uppercase font-black tracking-wider text-[9px]">{lf.type}</span>
+                                  <span>📍 {lf.location || 'Sanctum Corridor'}</span>
+                                  {lf.timestamp && <span>• 🕒 {lf.timestamp}</span>}
+                                </div>
                               </div>
                             </div>
                             <span className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-full tracking-wider flex items-center gap-1 shrink-0 ${isFound ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' : 'bg-orange-100 text-orange-800 border border-orange-300 animate-pulse'}`}>

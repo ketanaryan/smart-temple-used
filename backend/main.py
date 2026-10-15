@@ -884,6 +884,7 @@ class LostFoundRequest(BaseModel):
     location: Optional[str] = "Main Corridor"
     contact_name: Optional[str] = None
     contact_phone: Optional[str] = None
+    photo: Optional[str] = None
 
 @app.post("/services/sos")
 def trigger_sos(req: SOSRequest):
@@ -1036,6 +1037,7 @@ def report_lostfound(req: LostFoundRequest):
         "location": req.location or "Sanctum Corridor",
         "contact_name": req.contact_name or "Devotee Guardian",
         "contact_phone": req.contact_phone or "N/A",
+        "photo": req.photo,
         "timestamp": datetime.now().strftime("%d %b, %I:%M %p"),
         "status": "searching"
     }
