@@ -21,6 +21,7 @@ try:
     from typing import List, Optional
     from pydantic import BaseModel
     from sqlalchemy.orm import Session
+    from sqlalchemy import text
     from datetime import datetime, date, time, timedelta, timezone
     import models, schemas
     from database import engine, get_db, SessionLocal
@@ -281,6 +282,11 @@ try:
         now = get_ist_now()
         today = now.date()
         current_time = now.time()
+
+        temple = db.query(models.Temple).filter(models.Temple.id == temple_id).first()
+        temple_name = temple.name if temple else "Temple"
+
+        # 1. Active In-Queue for current / upcoming slots today
         online_count = db.query(models.Booking).join(models.TimeSlot).filter(
             models.TimeSlot.temple_id == temple_id, 
             models.TimeSlot.date == today,
@@ -325,6 +331,114 @@ try:
             prediction_text = "Steady crowd flow expected over the next 30 minutes."
             recommended_action = "Maintain current operations. Open all standard gates."
 
+        # 2. Date-wise Registration Breakdown Query
+        date_breakdown = []
+        try:
+            date_sql = text("""
+                SELECT 
+                    ts.date::text as d,
+                    COUNT(*) as total,
+                    COUNT(CASE WHEN b.status IN ('VISITED', 'SERVED', 'COMPLETED') THEN 1 END) as visited,
+                    COUNT(CASE WHEN b.status NOT IN ('VISITED', 'SERVED', 'COMPLETED') THEN 1 END) as in_queue,
+                    COUNT(CASE WHEN b.is_online = true THEN 1 END) as online_c,
+                    COUNT(CASE WHEN b.is_online = false THEN 1 END) as walkin_c
+                FROM bookings b
+                JOIN time_slots ts ON b.slot_id = ts.id
+                WHERE ts.temple_id = :tid
+                GROUP BY ts.date
+                ORDER BY ts.date DESC;
+            """)
+            date_rows = db.execute(date_sql, {"tid": temple_id}).fetchall()
+            date_breakdown = [{
+                "date": str(r[0]),
+                "total": int(r[1]),
+                "visited": int(r[2]),
+                "in_queue": int(r[3]),
+                "online": int(r[4]),
+                "walkin": int(r[5])
+            } for r in date_rows]
+        except Exception as e:
+            print("Error querying date_breakdown:", e)
+
+        # 3. Devotee Roster Query (Tokens, Devotee names, Dates, Times, Status)
+        devotee_roster = []
+        try:
+            roster_sql = text("""
+                SELECT 
+                    b.token_number,
+                    COALESCE(u.name, CASE WHEN b.is_online THEN 'Online Devotee' ELSE 'Walk-in Devotee' END) as uname,
+                    ts.date::text,
+                    ts.start_time::text,
+                    ts.end_time::text,
+                    b.status,
+                    b.is_online,
+                    COALESCE(b.booking_time::text, '')
+                FROM bookings b
+                JOIN time_slots ts ON b.slot_id = ts.id
+                LEFT JOIN users u ON b.user_id = u.id
+                WHERE ts.temple_id = :tid
+                ORDER BY ts.date DESC, ts.start_time ASC, b.id DESC
+                LIMIT 80;
+            """)
+            roster_rows = db.execute(roster_sql, {"tid": temple_id}).fetchall()
+            devotee_roster = [{
+                "token": r[0],
+                "devotee_name": r[1],
+                "date": str(r[2]),
+                "start_time": str(r[3])[:5] if r[3] else "",
+                "end_time": str(r[4])[:5] if r[4] else "",
+                "status": r[5],
+                "is_online": bool(r[6]),
+                "is_visited": r[5] in ["VISITED", "SERVED", "COMPLETED"],
+                "booking_time": str(r[7])
+            } for r in roster_rows]
+        except Exception as e:
+            print("Error querying devotee_roster:", e)
+
+        # 4. Slot Occupancy Query
+        slot_occupancy = []
+        try:
+            slot_sql = text("""
+                SELECT 
+                    ts.id,
+                    ts.date::text,
+                    ts.start_time::text,
+                    ts.end_time::text,
+                    ts.max_capacity,
+                    COUNT(b.id) as booked
+                FROM time_slots ts
+                LEFT JOIN bookings b ON b.slot_id = ts.id
+                WHERE ts.temple_id = :tid
+                GROUP BY ts.id, ts.date, ts.start_time, ts.end_time, ts.max_capacity
+                ORDER BY ts.date DESC, ts.start_time ASC
+                LIMIT 40;
+            """)
+            slot_rows = db.execute(slot_sql, {"tid": temple_id}).fetchall()
+            slot_occupancy = [{
+                "slot_id": r[0],
+                "date": str(r[1]),
+                "start_time": str(r[2])[:5] if r[2] else "",
+                "end_time": str(r[3])[:5] if r[3] else "",
+                "max_capacity": int(r[4]),
+                "booked": int(r[5]),
+                "available": max(0, int(r[4]) - int(r[5]))
+            } for r in slot_rows]
+        except Exception as e:
+            print("Error querying slot_occupancy:", e)
+
+        # Compute summary aggregations
+        total_registered_all = sum(d["total"] for d in date_breakdown)
+        total_visited_all = sum(d["visited"] for d in date_breakdown)
+        total_in_queue_all = sum(d["in_queue"] for d in date_breakdown)
+        
+        today_str = str(today)
+        today_match = next((d for d in date_breakdown if d["date"] == today_str), None)
+        today_total = today_match["total"] if today_match else 0
+        today_visited = today_match["visited"] if today_match else 0
+        
+        # Advance bookings for future dates
+        advance_bookings = sum(d["total"] for d in date_breakdown if d["date"] > today_str)
+
         env_data = {
             1: {"temp": "28.5°C", "aqi": 112, "aqi_status": "MODERATE", "cap": "76%", "sec": "SECURE"},
             2: {"temp": "22.1°C", "aqi": 42, "aqi_status": "GOOD", "cap": "92%", "sec": "ELEVATED"},
@@ -333,9 +447,23 @@ try:
         mock_env = env_data.get(temple_id, env_data[1])
 
         return {
+            "temple_id": temple_id,
+            "temple_name": temple_name,
             "online_queue": online_count,
             "walkin_queue": walkin_count,
             "next_category": next_category,
+            "summary": {
+                "total_all_time_registered": total_registered_all,
+                "total_all_time_visited": total_visited_all,
+                "total_all_time_in_queue": total_in_queue_all,
+                "today_registered": today_total,
+                "today_visited": today_visited,
+                "advance_bookings": advance_bookings,
+                "dates_count": len(date_breakdown)
+            },
+            "date_breakdown": date_breakdown,
+            "devotee_roster": devotee_roster,
+            "slot_occupancy": slot_occupancy,
             "mmk_metrics": {
                 "arrival_rate_lambda": round(arrival_rate_lambda, 2),
                 "service_rate_mu": service_rate_mu,
@@ -351,7 +479,6 @@ try:
                 "slots_auto_adjusted": len(upcoming_slots)
             },
             "environment": mock_env,
-
             "cv_alerts": {
                 "detected_crowd": "Waiting for CV feed...",
                 "expected_devotees": "...",

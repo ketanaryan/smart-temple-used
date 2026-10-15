@@ -131,6 +131,9 @@ function App() {
   const [parkingError, setParkingError] = useState<string>('');
   
   // Gate Volunteer Token Scanner state
+  const [queueDateFilter, setQueueDateFilter] = useState<string>('ALL');
+  const [queueSearchTerm, setQueueSearchTerm] = useState<string>('');
+  const [queueStatusFilter, setQueueStatusFilter] = useState<'ALL' | 'ACTIVE' | 'VISITED'>('ALL');
   const [gateTokenInput, setGateTokenInput] = useState<string>('');
   const [gateScanResult, setGateScanResult] = useState<any>(null);
   const [isVerifyingGateToken, setIsVerifyingGateToken] = useState<boolean>(false);
@@ -619,6 +622,20 @@ function App() {
   const allUserBookings = userDashboard?.bookings || [];
   const activeBookings = allUserBookings.filter((b: any) => isBookingActive(b));
   const pastBookings = allUserBookings.filter((b: any) => !isBookingActive(b));
+
+  const filteredDevotees = (queueStatus?.devotee_roster || []).filter((d: any) => {
+    if (queueDateFilter !== 'ALL' && d.date !== queueDateFilter) return false;
+    if (queueStatusFilter === 'ACTIVE' && d.is_visited) return false;
+    if (queueStatusFilter === 'VISITED' && !d.is_visited) return false;
+    if (queueSearchTerm.trim()) {
+      const q = queueSearchTerm.toLowerCase().trim();
+      const matchToken = d.token && d.token.toLowerCase().includes(q);
+      const matchName = d.devotee_name && d.devotee_name.toLowerCase().includes(q);
+      const matchDate = d.date && d.date.toLowerCase().includes(q);
+      if (!matchToken && !matchName && !matchDate) return false;
+    }
+    return true;
+  });
 
   const handleScreenshotUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -2178,20 +2195,278 @@ function App() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="bg-gradient-to-br from-blue-50 to-blue-100 p-6 rounded-2xl text-center border border-blue-200 shadow-sm relative overflow-hidden">
-                    <div className="absolute top-0 left-0 w-1 h-full bg-blue-500"></div>
-                    <div className="text-sm text-blue-700 font-bold uppercase tracking-wider">Online Booking Queue</div>
-                    <div className="text-6xl font-black text-blue-900 my-4">{queueStatus.online_queue}</div>
-                    <div className="text-sm text-blue-600 font-medium">waiting devotees</div>
+                {/* Master Registration & Queue KPI Cards */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="bg-gradient-to-br from-indigo-50 to-indigo-100/70 p-5 rounded-2xl border-2 border-indigo-200 shadow-sm relative overflow-hidden">
+                    <div className="text-[11px] font-black uppercase tracking-wider text-indigo-700 mb-1 flex items-center justify-between">
+                      <span>{isHindi ? "कुल पंजीकृत श्रद्धालु" : "Total Registered"}</span>
+                      <Users className="w-4 h-4 text-indigo-600" />
+                    </div>
+                    <div className="text-4xl md:text-5xl font-black text-indigo-950 my-1">
+                      {queueStatus.summary?.total_all_time_registered ?? (queueStatus.online_queue + queueStatus.walkin_queue)}
+                    </div>
+                    <div className="text-[11px] text-indigo-700 font-semibold">
+                      {isHindi ? "सभी तारीखों का कुल योग" : "All dates registration total"}
+                    </div>
                   </div>
-                  <div className="bg-gradient-to-br from-green-50 to-green-100 p-6 rounded-2xl text-center border border-green-200 shadow-sm relative overflow-hidden">
-                    <div className="absolute top-0 left-0 w-1 h-full bg-green-500"></div>
-                    <div className="text-sm text-green-700 font-bold uppercase tracking-wider">Walk-in Queue</div>
-                    <div className="text-6xl font-black text-green-900 my-4">{queueStatus.walkin_queue}</div>
-                    <div className="text-sm text-green-600 font-medium">waiting devotees</div>
+
+                  <div className="bg-gradient-to-br from-blue-50 to-blue-100/70 p-5 rounded-2xl border-2 border-blue-200 shadow-sm relative overflow-hidden">
+                    <div className="text-[11px] font-black uppercase tracking-wider text-blue-700 mb-1 flex items-center justify-between">
+                      <span>{isHindi ? "सक्रिय कतार में" : "Active In Queue"}</span>
+                      <Clock className="w-4 h-4 text-blue-600" />
+                    </div>
+                    <div className="text-4xl md:text-5xl font-black text-blue-950 my-1">
+                      {queueStatus.summary?.total_all_time_in_queue ?? (queueStatus.online_queue + queueStatus.walkin_queue)}
+                    </div>
+                    <div className="text-[11px] text-blue-700 font-semibold flex items-center gap-1.5">
+                      <span>Online: {queueStatus.online_queue}</span>
+                      <span>•</span>
+                      <span>Walk-in: {queueStatus.walkin_queue}</span>
+                    </div>
+                  </div>
+
+                  <div className="bg-gradient-to-br from-amber-50 to-amber-100/70 p-5 rounded-2xl border-2 border-amber-200 shadow-sm relative overflow-hidden">
+                    <div className="text-[11px] font-black uppercase tracking-wider text-amber-800 mb-1 flex items-center justify-between">
+                      <span>{isHindi ? "अग्रिम बुकिंग" : "Advance Bookings"}</span>
+                      <CalendarCheck className="w-4 h-4 text-amber-700" />
+                    </div>
+                    <div className="text-4xl md:text-5xl font-black text-amber-950 my-1">
+                      {queueStatus.summary?.advance_bookings ?? 0}
+                    </div>
+                    <div className="text-[11px] text-amber-800 font-semibold">
+                      {isHindi ? "कल व आगामी तारीखें" : "Tomorrow & upcoming dates"}
+                    </div>
+                  </div>
+
+                  <div className="bg-gradient-to-br from-emerald-50 to-emerald-100/70 p-5 rounded-2xl border-2 border-emerald-200 shadow-sm relative overflow-hidden">
+                    <div className="text-[11px] font-black uppercase tracking-wider text-emerald-800 mb-1 flex items-center justify-between">
+                      <span>{isHindi ? "दर्शन संपन्न (इतिहास)" : "Visited (Past Log)"}</span>
+                      <CheckCircle2 className="w-4 h-4 text-emerald-700" />
+                    </div>
+                    <div className="text-4xl md:text-5xl font-black text-emerald-950 my-1">
+                      {queueStatus.summary?.total_all_time_visited ?? 0}
+                    </div>
+                    <div className="text-[11px] text-emerald-800 font-semibold">
+                      {isHindi ? "गेट पर सत्यापित व संपन्न" : "Admitted & visited records"}
+                    </div>
                   </div>
                 </div>
+
+                {/* Date-wise Breakdown Timeline Chips */}
+                {queueStatus.date_breakdown && queueStatus.date_breakdown.length > 0 && (
+                  <div className="bg-white border-2 border-orange-100 rounded-2xl p-5 shadow-sm">
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 mb-3">
+                      <div>
+                        <h4 className="font-black text-base text-gray-900 flex items-center gap-2">
+                          <CalendarCheck className="w-5 h-5 text-orange-600" />
+                          <span>{isHindi ? "तारीख अनुसार श्रद्धालु पंजीकरण विवरण" : "Registration Breakdown by Date"}</span>
+                        </h4>
+                        <p className="text-xs text-gray-500">
+                          {isHindi ? "किसी भी तारीख पर क्लिक करके उस दिन के रिकॉर्ड देखें" : "Click on any date to filter the live roster below"}
+                        </p>
+                      </div>
+                      {queueDateFilter !== 'ALL' && (
+                        <button
+                          onClick={() => setQueueDateFilter('ALL')}
+                          className="text-xs font-bold text-orange-600 hover:text-orange-700 underline"
+                        >
+                          {isHindi ? "सभी तारीखें दिखाएं (Show All)" : "Show All Dates"}
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                      {queueStatus.date_breakdown.map((dItem: any, idx: number) => {
+                        const isSelected = queueDateFilter === dItem.date;
+                        return (
+                          <div
+                            key={idx}
+                            onClick={() => setQueueDateFilter(isSelected ? 'ALL' : dItem.date)}
+                            className={`p-3.5 rounded-xl border-2 transition-all cursor-pointer flex flex-col justify-between ${isSelected ? 'bg-orange-50 border-orange-500 shadow-md ring-2 ring-orange-200' : 'bg-gray-50/70 hover:bg-white border-gray-200 hover:border-orange-300 shadow-sm'}`}
+                          >
+                            <div className="flex justify-between items-center mb-1.5">
+                              <span className="font-black text-sm text-gray-900 flex items-center gap-1.5">
+                                <span>📅</span>
+                                <span>{dItem.date}</span>
+                              </span>
+                              <span className="font-black text-xs px-2 py-0.5 rounded-full bg-orange-100 text-orange-800 border border-orange-200">
+                                {dItem.total} {isHindi ? "श्रद्धालु" : "Devotees"}
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-between text-xs text-gray-600 pt-1 border-t border-gray-100">
+                              <span className="font-bold text-blue-700">⏳ In Queue: {dItem.in_queue}</span>
+                              <span className="font-bold text-emerald-700">✓ Visited: {dItem.visited}</span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Live Devotee Registry & Entry Audit Table */}
+                <div className="bg-white border-2 border-gray-200 rounded-2xl p-5 shadow-sm">
+                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4 pb-3 border-b border-gray-100">
+                    <div>
+                      <h4 className="font-black text-lg text-gray-900 flex items-center gap-2">
+                        <Users className="w-5 h-5 text-orange-600" />
+                        <span>{isHindi ? "वास्तविक श्रद्धालु रिकॉर्ड व लाइव स्थिति" : "Live Devotee Registry & Entry Audit"}</span>
+                      </h4>
+                      <p className="text-xs text-gray-500">
+                        {isHindi 
+                          ? `दिखाए जा रहे हैं: ${filteredDevotees.length} श्रद्धालु रिकॉर्ड` 
+                          : `Showing: ${filteredDevotees.length} devotee booking records`}
+                      </p>
+                    </div>
+
+                    {/* Search box */}
+                    <div className="w-full sm:w-64 relative">
+                      <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                      <input
+                        type="text"
+                        value={queueSearchTerm}
+                        onChange={(e) => setQueueSearchTerm(e.target.value)}
+                        placeholder={isHindi ? "नाम या टोकन खोजें..." : "Search name or token..."}
+                        className="w-full pl-9 pr-3 py-1.5 text-xs font-bold bg-gray-50 border border-gray-200 rounded-xl outline-none focus:bg-white focus:border-orange-500 transition"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Filter Tabs */}
+                  <div className="flex flex-wrap items-center gap-2 mb-4">
+                    <button
+                      onClick={() => setQueueStatusFilter('ALL')}
+                      className={`px-3 py-1.5 rounded-xl font-bold text-xs transition ${queueStatusFilter === 'ALL' ? 'bg-orange-600 text-white shadow-sm' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                    >
+                      {isHindi ? `सभी रिकॉर्ड (${(queueStatus.devotee_roster || []).length})` : `All Records (${(queueStatus.devotee_roster || []).length})`}
+                    </button>
+                    <button
+                      onClick={() => setQueueStatusFilter('ACTIVE')}
+                      className={`px-3 py-1.5 rounded-xl font-bold text-xs transition ${queueStatusFilter === 'ACTIVE' ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                    >
+                      {isHindi ? "सक्रिय कतार (Active In-Queue)" : "Active In-Queue"}
+                    </button>
+                    <button
+                      onClick={() => setQueueStatusFilter('VISITED')}
+                      className={`px-3 py-1.5 rounded-xl font-bold text-xs transition ${queueStatusFilter === 'VISITED' ? 'bg-emerald-600 text-white shadow-sm' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                    >
+                      {isHindi ? "दर्शन संपन्न (Past Visited)" : "Past Visited"}
+                    </button>
+                  </div>
+
+                  {/* Devotees Table */}
+                  <div className="overflow-x-auto rounded-xl border border-gray-100">
+                    <table className="w-full text-left border-collapse text-xs">
+                      <thead>
+                        <tr className="bg-gray-50 border-b border-gray-200 text-gray-500 font-black uppercase tracking-wider text-[10px]">
+                          <th className="p-3">Token #</th>
+                          <th className="p-3">Devotee Name</th>
+                          <th className="p-3">Darshan Date</th>
+                          <th className="p-3">Slot Time</th>
+                          <th className="p-3">Channel</th>
+                          <th className="p-3">Status</th>
+                          <th className="p-3 text-right">e-Pass</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {filteredDevotees.length === 0 ? (
+                          <tr>
+                            <td colSpan={7} className="p-8 text-center text-gray-400 font-bold">
+                              {isHindi ? "इस फ़िल्टर के लिए कोई रिकॉर्ड उपलब्ध नहीं है।" : "No booking records match the selected filter."}
+                            </td>
+                          </tr>
+                        ) : (
+                          filteredDevotees.map((dev: any, dIdx: number) => (
+                            <tr key={dIdx} className="hover:bg-orange-50/40 transition-colors">
+                              <td className="p-3 font-mono font-black text-gray-900">
+                                {dev.token}
+                              </td>
+                              <td className="p-3 font-bold text-gray-900">
+                                {dev.devotee_name}
+                              </td>
+                              <td className="p-3 font-medium text-gray-700">
+                                📅 {dev.date}
+                              </td>
+                              <td className="p-3 font-medium text-orange-800">
+                                🕒 {dev.start_time} - {dev.end_time}
+                              </td>
+                              <td className="p-3">
+                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${dev.is_online ? 'bg-blue-100 text-blue-800' : 'bg-purple-100 text-purple-800'}`}>
+                                  {dev.is_online ? 'Online' : 'Walk-in'}
+                                </span>
+                              </td>
+                              <td className="p-3">
+                                {dev.is_visited ? (
+                                  <span className="inline-flex items-center gap-1 text-[10px] font-black text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-full">
+                                    <CheckCircle2 className="w-3 h-3 text-blue-600" />
+                                    <span>VISITED</span>
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 text-[10px] font-black text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                                    <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                    <span>CONFIRMED</span>
+                                  </span>
+                                )}
+                              </td>
+                              <td className="p-3 text-right">
+                                <button
+                                  onClick={() => {
+                                    setTicketViewToken(dev.token);
+                                    window.history.pushState({}, '', `/?ticket=${dev.token}`);
+                                  }}
+                                  className="text-[11px] font-black text-orange-600 hover:text-orange-700 hover:underline inline-flex items-center gap-1"
+                                >
+                                  <span>{isHindi ? "पास देखें" : "View"}</span>
+                                  <span>&rarr;</span>
+                                </button>
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Slot-by-Slot Occupancy Breakdown */}
+                {queueStatus.slot_occupancy && queueStatus.slot_occupancy.length > 0 && (
+                  <div className="bg-white border-2 border-orange-100 rounded-2xl p-5 shadow-sm">
+                    <h4 className="font-black text-base text-gray-900 mb-3 flex items-center gap-2">
+                      <Clock className="w-5 h-5 text-orange-600" />
+                      <span>{isHindi ? "स्लॉट अनुसार लाइव क्षमता व बुकिंग स्थिति" : "Live Slot Occupancy & Capacity Grid"}</span>
+                    </h4>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                      {queueStatus.slot_occupancy.slice(0, 12).map((sItem: any, sIdx: number) => {
+                        const pct = Math.min(100, Math.round((sItem.booked / sItem.max_capacity) * 100));
+                        return (
+                          <div key={sIdx} className="bg-gray-50/80 p-3.5 rounded-xl border border-gray-200 flex flex-col justify-between">
+                            <div className="flex justify-between items-center mb-1">
+                              <span className="text-xs font-black text-gray-800">
+                                🕒 {sItem.start_time} - {sItem.end_time}
+                              </span>
+                              <span className="text-[11px] font-mono text-gray-500">
+                                {sItem.date}
+                              </span>
+                            </div>
+                            <div className="w-full bg-gray-200 h-2 rounded-full overflow-hidden my-2">
+                              <div
+                                className={`h-full rounded-full transition-all duration-500 ${pct > 80 ? 'bg-red-500' : pct > 40 ? 'bg-orange-500' : 'bg-emerald-500'}`}
+                                style={{ width: `${pct}%` }}
+                              ></div>
+                            </div>
+                            <div className="flex justify-between items-center text-[11px]">
+                              <span className="font-bold text-gray-600">{sItem.booked} / {sItem.max_capacity} Booked</span>
+                              <span className={`font-black ${sItem.available === 0 ? 'text-red-600' : 'text-emerald-700'}`}>
+                                {sItem.available === 0 ? (isHindi ? "फुल (FULL)" : "FULL") : `${sItem.available} Available`}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
                 <div className="bg-indigo-50 border border-indigo-200 p-6 rounded-2xl shadow-sm relative overflow-hidden">
                   <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500 rounded-bl-full opacity-5 pointer-events-none"></div>
                   <h3 className="font-bold mb-5 text-indigo-900 text-xl flex items-center gap-3">
