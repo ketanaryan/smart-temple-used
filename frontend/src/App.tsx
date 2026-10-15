@@ -285,7 +285,7 @@ function App() {
 
                 <div className="mt-4 flex flex-col items-center">
                   <div className="p-4 bg-gray-50 rounded-2xl border border-gray-100 mb-2">
-                    <QRCodeSVG value={ticketData.token} size={150} level="H" fgColor="#000000" />
+                    <QRCodeSVG value={`${window.location.origin}/?ticket=${ticketData.token}`} size={150} level="H" fgColor="#000000" />
                   </div>
                   <div className="text-xs font-mono text-gray-400">{ticketData.token}</div>
                 </div>
@@ -293,8 +293,20 @@ function App() {
             )}
           </div>
           
-          <div className="bg-gray-50 p-4 text-center border-t border-gray-100">
-            <p className="text-xs font-bold text-gray-400">Powered by Smart Temple System</p>
+          <div className="bg-gray-50 p-4 text-center border-t border-gray-100 flex flex-col gap-2">
+            <button 
+              onClick={() => window.print()}
+              className="w-full py-3 bg-orange-600 hover:bg-orange-700 text-white font-bold rounded-xl text-sm transition shadow-sm active:scale-95"
+            >
+              Print / Save Ticket
+            </button>
+            <button 
+              onClick={() => { window.location.href = window.location.origin; }}
+              className="w-full py-2.5 bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold rounded-xl text-xs transition active:scale-95"
+            >
+              Back to Smart Temple
+            </button>
+            <p className="text-[10px] font-bold text-gray-400 mt-1">Powered by Smart Temple System</p>
           </div>
         </div>
       </div>
@@ -511,8 +523,15 @@ function App() {
                           </div>
                         ) : (
                           userDashboard.bookings.map((b: any, i: number) => (
-                            <div key={i} className="flex flex-col p-3 bg-white rounded-xl border border-gray-100 shadow-sm">
-                              <div className="font-bold text-gray-800 text-sm mb-1 truncate">{b.temple_name}</div>
+                            <div 
+                              key={i} 
+                              onClick={() => { window.location.href = `/?ticket=${b.token}`; }}
+                              className="flex flex-col p-3 bg-white rounded-xl border border-gray-100 shadow-sm cursor-pointer hover:border-orange-300 hover:shadow-md transition-all group"
+                            >
+                              <div className="font-bold text-gray-800 text-sm mb-1 truncate group-hover:text-orange-600 transition-colors flex justify-between items-center">
+                                <span>{b.temple_name}</span>
+                                <span className="text-[10px] text-orange-500 font-bold">View Ticket &rarr;</span>
+                              </div>
                               <div className="flex justify-between items-center mt-1">
                                 <div className="text-[11px] font-medium text-gray-500">{b.date} - {b.start_time ? String(b.start_time).substring(0,5) : ""}</div>
                                 <div className="text-[10px] font-black text-orange-600 bg-orange-50 px-2 py-1 rounded">{b.token}</div>
@@ -613,7 +632,7 @@ function App() {
                             <div className="bg-gray-50 rounded-3xl p-6 md:p-8 border border-gray-200 inline-block mb-6 shadow-inner relative mx-auto w-fit">
                               <div className="absolute -left-3 top-1/2 w-6 h-6 bg-white rounded-full border border-gray-200"></div>
                               <div className="absolute -right-3 top-1/2 w-6 h-6 bg-white rounded-full border border-gray-200"></div>
-                              <QRCodeSVG value={ticketViewToken || bookedToken} size={160} level="H" includeMargin={false} />
+                              <QRCodeSVG value={`${window.location.origin}/?ticket=${ticketViewToken || bookedToken}`} size={160} level="H" includeMargin={false} />
                               <div className="mt-6 text-3xl font-black text-orange-600 tracking-widest">{ticketViewToken || bookedToken}</div>
                               <div className="text-[10px] font-bold text-gray-400 uppercase mt-1">E-Ticket Token</div>
                             </div>
