@@ -1556,7 +1556,9 @@ function App() {
                           <div className="bg-white flex flex-col h-full rounded-2xl p-6 md:p-8 shadow-xl border border-gray-100 relative">
                             <div className="flex justify-between items-start mb-6 border-b border-gray-100 pb-4">
                               <div>
-                                <h3 className="text-2xl font-black text-gray-900 tracking-tight">Choose Slot</h3>
+                                <h3 className="text-2xl font-black text-gray-900 tracking-tight">
+                                  {isHindi ? "दर्शन समय स्लॉट चुनें" : "Choose Slot"}
+                                </h3>
                                 <p className="text-sm font-bold text-orange-600 mt-1">{temples.find((t: any) => t.id == selectedTemple)?.name}</p>
                               </div>
                               <button onClick={() => { setShowBookingForm(false); setSelectedTemple(''); setSelectedSlot(''); }} className="text-gray-400 hover:text-gray-900 transition bg-gray-100 hover:bg-gray-200 p-2 rounded-full active:scale-95">
@@ -1565,7 +1567,9 @@ function App() {
                             </div>
 
                             <div className="mb-6">
-                              <label className="block text-xs font-black uppercase tracking-wider mb-2 text-gray-400">Select Date</label>
+                              <label className="block text-xs font-black uppercase tracking-wider mb-2 text-gray-400">
+                                {isHindi ? "दर्शन तिथि चुनें" : "Select Date"}
+                              </label>
                               <input 
                                 type="date" 
                                 min={getLocalDateStr()} 
@@ -1575,7 +1579,9 @@ function App() {
                               />
                             </div>
                             
-                            <label className="block text-xs font-black uppercase tracking-wider mb-2 text-gray-400">Available Slots</label>
+                            <label className="block text-xs font-black uppercase tracking-wider mb-2 text-gray-400">
+                              {isHindi ? "उपलब्ध स्लॉट" : "Available Slots"}
+                            </label>
                             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6 overflow-y-auto pr-2 flex-1 content-start">
                               {isLoadingSlots ? (
                                 <div className="col-span-2 sm:col-span-3 text-center p-8 bg-gray-50 rounded-xl border-2 border-dashed border-gray-200">
@@ -1652,7 +1658,7 @@ function App() {
                                     >
                                       {isLowRush && slot.booked_count < slot.max_capacity && (
                                         <div className={`absolute top-0 w-full text-[8px] font-black uppercase tracking-widest py-0.5 ${selectedSlot === slot.id ? 'bg-orange-700 text-orange-100' : 'bg-green-500 text-white'}`}>
-                                          {isHindi ? "कम भीड़ होगी" : "Kam Rush Hogi"}
+                                          {isHindi ? "कम भीड़ (सुगम दर्शन)" : "LOW CROWD"}
                                         </div>
                                       )}
                                       <span className={isLowRush ? "mt-2" : ""}>
@@ -1673,7 +1679,7 @@ function App() {
                               className={`w-full py-4 rounded-xl font-black uppercase tracking-widest shadow-xl transition-all mt-auto border-b-4
                                 ${!selectedSlot ? 'bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed shadow-none' : 'bg-orange-600 border-orange-800 text-white hover:bg-orange-500 hover:border-orange-700 active:scale-95'}`}
                             >
-                              Confirm Booking
+                              {isHindi ? "दर्शन स्लॉट बुक करें" : "Confirm Booking"}
                             </button>
                             {bookingMessage && <p className="text-red-500 text-center text-sm font-bold mt-4">{bookingMessage}</p>}
                           </div>
