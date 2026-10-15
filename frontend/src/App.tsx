@@ -7,6 +7,23 @@ import { supabase } from './supabaseClient';
 const API_URL = import.meta.env.PROD ? '/api' : 'http://127.0.0.1:8000';
 
 
+
+const getLocalDateStr = () => {
+  const d = new Date();
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const getLocalTimeStr = () => {
+  const d = new Date();
+  const h = String(d.getHours()).padStart(2, '0');
+  const m = String(d.getMinutes()).padStart(2, '0');
+  const s = String(d.getSeconds()).padStart(2, '0');
+  return `${h}:${m}:${s}`;
+};
+
 const normalizeCity = (city: string) => {
   if (!city) return '';
   const c = city.trim();
@@ -21,7 +38,7 @@ function App() {
   const [selectedCity, setSelectedCity] = useState('All Cities');
   
   const [selectedTemple, setSelectedTemple] = useState('');
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  const [selectedDate, setSelectedDate] = useState(getLocalDateStr());
   const [selectedSlot, setSelectedSlot] = useState('');
   
   const [queueStatus, setQueueStatus] = useState<any>(null);
@@ -695,6 +712,7 @@ function App() {
                               <label className="block text-xs font-black uppercase tracking-wider mb-2 text-gray-400">Select Date</label>
                               <input 
                                 type="date" 
+                                min={getLocalDateStr()} 
                                 className="w-full border-2 border-gray-100 p-4 rounded-xl bg-gray-50 focus:bg-white focus:border-orange-500 focus:ring-0 outline-none transition font-bold text-gray-700 cursor-pointer" 
                                 value={selectedDate}
                                 onChange={(e) => setSelectedDate(e.target.value)}
@@ -706,12 +724,61 @@ function App() {
                               {isLoadingSlots ? (
                                 <div className="col-span-2 sm:col-span-3 text-center p-8 bg-gray-50 rounded-xl border-2 border-dashed border-gray-200">
                                   <div className="w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
-                                  <div className="text-gray-500 text-sm font-bold">Fetching live availability...</div>
+                                  <div className="text-gray-500 text-sm font-bold">
+                                    {isHindi ? "लाइव उपलब्धता जांची जा रही है..." : "Fetching live availability..."}
+                                  </div>
                                 </div>
-                              ) : slots.length === 0 ? (
-                                <div className="col-span-2 sm:col-span-3 text-gray-500 text-sm p-6 bg-gray-50 rounded-xl text-center border-2 border-dashed border-gray-200 font-bold">No slots found for this date.</div>
-                              ) : (
-                                slots.map((slot, idx) => {
+                              ) : (() => {
+                                const isSelectedToday = selectedDate === getLocalDateStr();
+                                const currentTime = getLocalTimeStr();
+                                // For today, only show slots that haven't ended yet
+                                const availableSlots = slots.filter((slot: any) => {
+                                  if (isSelectedToday) {
+                                    const slotEnd = slot.end_time || slot.start_time;
+                                    return slotEnd > currentTime;
+                                  }
+                                  return true;
+                                });
+
+                                if (isSelectedToday && slots.length > 0 && availableSlots.length === 0) {
+                                  return (
+                                    <div className="col-span-2 sm:col-span-3 text-center p-6 bg-orange-50/80 border-2 border-dashed border-orange-200 rounded-2xl animate-in fade-in">
+                                      <div className="text-2xl mb-2">🌙</div>
+                                      <h4 className="font-black text-gray-900 text-base mb-1">
+                                        {isHindi ? "आज के सभी दर्शन समाप्त हो चुके हैं" : "Today's Darshan Concluded"}
+                                      </h4>
+                                      <p className="text-gray-600 text-xs max-w-sm mx-auto mb-4 leading-relaxed font-medium">
+                                        {isHindi 
+                                          ? "आज के सभी समय स्लॉट बीत चुके हैं एवं मंदिर के पट रात्रि विश्राम हेतु बंद हैं। कृपया कल या आगामी तिथि चुनें।" 
+                                          : "All slots for today have ended and the temple is closed for the night. Please select tomorrow or an upcoming date to book your Darshan."}
+                                      </p>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          const tomorrow = new Date();
+                                          tomorrow.setDate(tomorrow.getDate() + 1);
+                                          const y = tomorrow.getFullYear();
+                                          const m = String(tomorrow.getMonth() + 1).padStart(2, '0');
+                                          const d = String(tomorrow.getDate()).padStart(2, '0');
+                                          setSelectedDate(`${y}-${m}-${d}`);
+                                        }}
+                                        className="bg-orange-600 hover:bg-orange-700 text-white font-bold text-xs py-2.5 px-5 rounded-xl shadow-md transition active:scale-95"
+                                      >
+                                        {isHindi ? "कल के स्लॉट चुनें →" : "Select Tomorrow's Date →"}
+                                      </button>
+                                    </div>
+                                  );
+                                }
+
+                                if (availableSlots.length === 0) {
+                                  return (
+                                    <div className="col-span-2 sm:col-span-3 text-gray-500 text-sm p-6 bg-gray-50 rounded-xl text-center border-2 border-dashed border-gray-200 font-bold">
+                                      {isHindi ? "इस तिथि के लिए कोई स्लॉट नहीं मिला।" : "No slots found for this date."}
+                                    </div>
+                                  );
+                                }
+
+                                return availableSlots.map((slot, idx) => {
                                   const isLowRush = (idx % 3 === 0);
                                   return (
                                     <button 
@@ -727,15 +794,21 @@ function App() {
                                             ? 'bg-orange-600 border-orange-600 text-white shadow-lg transform scale-[1.02] z-10' 
                                             : 'bg-white border-gray-100 text-gray-700 hover:border-orange-300 hover:shadow-md'}`}
                                     >
-                                      {isLowRush && slot.booked_count < slot.max_capacity && <div className={`absolute top-0 w-full text-[8px] font-black uppercase tracking-widest py-0.5 ${selectedSlot === slot.id ? 'bg-orange-700 text-orange-100' : 'bg-green-500 text-white'}`}>Kam Rush Hogi</div>}
-                                      <span className={isLowRush ? "mt-2" : ""}>{slot.start_time.substring(0,5)} - {slot.end_time.substring(0,5)}</span>
+                                      {isLowRush && slot.booked_count < slot.max_capacity && (
+                                        <div className={`absolute top-0 w-full text-[8px] font-black uppercase tracking-widest py-0.5 ${selectedSlot === slot.id ? 'bg-orange-700 text-orange-100' : 'bg-green-500 text-white'}`}>
+                                          {isHindi ? "कम भीड़ होगी" : "Kam Rush Hogi"}
+                                        </div>
+                                      )}
+                                      <span className={isLowRush ? "mt-2" : ""}>
+                                        {slot.start_time ? String(slot.start_time).substring(0,5) : ''} - {slot.end_time ? String(slot.end_time).substring(0,5) : ''}
+                                      </span>
                                       <span className={`text-[10px] uppercase tracking-wider font-black ${slot.booked_count >= slot.max_capacity ? 'text-red-500' : selectedSlot === slot.id ? 'text-orange-200' : 'text-green-600'}`}>
-                                        {slot.booked_count >= slot.max_capacity ? 'Fully Booked' : `${slot.max_capacity - slot.booked_count} Left`}
+                                        {slot.booked_count >= slot.max_capacity ? (isHindi ? 'पूर्ण' : 'Fully Booked') : `${slot.max_capacity - slot.booked_count} ${isHindi ? 'शेष' : 'Left'}`}
                                       </span>
                                     </button>
                                   );
-                                })
-                              )}
+                                });
+                              })()}
                             </div>
 
                             <button 

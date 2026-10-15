@@ -205,6 +205,13 @@ try:
             raise HTTPException(status_code=404, detail="Slot not found")
         if slot.availability <= 0:
             raise HTTPException(status_code=400, detail="Slot is full")
+        
+        # Check if slot date or time has already passed
+        today = datetime.now().date()
+        current_time = datetime.now().time()
+        if slot.date < today or (slot.date == today and slot.end_time < current_time):
+            raise HTTPException(status_code=400, detail="This slot time has already passed. Please select an upcoming slot.")
+
         token = f"{'ONL' if booking.is_online else 'WLK'}-{uuid.uuid4().hex[:6].upper()}"
         db_booking = models.Booking(
             user_id=current_user.id,
